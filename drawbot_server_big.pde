@@ -1,7 +1,8 @@
-#include <AFMotorSPI.h>
+//#include <AFMotorSPI.h>
+#include <AFMotor.h>
 #include <AccelStepper.h>
-#include <Servo.h>
 #include <avr/pgmspace.h>
+#include <Servo.h>
 
 // Pen raising servo
 Servo penHeight;
@@ -24,14 +25,14 @@ int startLengthMM = 800;
 float mmPerStep = mmPerRev / motorStepsPerRev;
 float stepsPerMM = motorStepsPerRev / mmPerRev;
 
-int pageWidth = 712 * stepsPerMM;
+int pageWidth = 712 * stepsPerMM; // previously 712
 
 static String rowAxis = "A";
 const int INLENGTH = 50;
 const char INTERMINATOR = 10;
 
 const String DIRECTION_STRING_LTR = "LTR";
-const int SRAM_SIZE = 2048;
+const int SRAM_SIZE = 8196;
 const String FREE_MEMORY_STRING = "MEMORY,";
 int availMem = 0;
 
@@ -131,9 +132,9 @@ void setup()
 {
   Serial.begin(57600);           // set up Serial library at 9600 bps
   print_P(PSTR("POLARGRAPH ON!"));
+  Serial.println();
 
-  pinMode(10, OUTPUT); // necessary for SD card reading to work
-
+  pinMode(53, OUTPUT); // necessary for SD card reading to work
 
 
   accelA.setMaxSpeed(currentMaxSpeed);
@@ -141,51 +142,63 @@ void setup()
   accelB.setMaxSpeed(currentMaxSpeed);
   accelB.setAcceleration(currentAcceleration);
   
-//  accelA.setMinPulseWidth(1);
-//  accelB.setMinPulseWidth(1);
+  accelA.setMinPulseWidth(10);
+  accelB.setMinPulseWidth(10);
 
   float startLength = ((float) startLengthMM / (float) mmPerRev) * (float) motorStepsPerRev;
   accelA.setCurrentPosition(startLength);
   accelB.setCurrentPosition(startLength);
 
-  // turn on servo
-  penDown();
-  
   drawingLeftToRight = true;
+  
+  //testServoRange();
+  movePenUp();
 
   readyString = READY;
   establishContact();
   delay(500);
   outputAvailableMemory();
-  
 }
+
 
 void penUp()
 {
   if (isPenUp == false)
   {
-    penHeight.attach(PEN_HEIGHT_SERVO_PIN);
-    for (int i=DOWN_POSITION; i>UP_POSITION; i--) {
-      Serial.println(i);
-      penHeight.write(i);
-    }
-    penHeight.detach();
-    isPenUp = true;
+    movePenUp();
   }
 }
+
+void movePenUp()
+{
+  penHeight.attach(PEN_HEIGHT_SERVO_PIN);
+  for (int i=DOWN_POSITION; i>UP_POSITION; i--) {
+    Serial.println(i);
+    penHeight.write(i);
+    delay(10);
+  }
+  penHeight.detach();
+  isPenUp = true;
+}  
+
 
 void penDown()
 {
   if (isPenUp == true)
   {
-    penHeight.attach(PEN_HEIGHT_SERVO_PIN);
-    for (int i=UP_POSITION; i<DOWN_POSITION; i++) {
-      Serial.println(i);
-      penHeight.write(i);
-    }
-    penHeight.detach();
-    isPenUp = false;
+    movePenDown();
   }
+}
+void movePenDown()
+{
+  penHeight.attach(PEN_HEIGHT_SERVO_PIN);
+  for (int i=UP_POSITION; i<DOWN_POSITION; i++) {
+    Serial.println(i);
+    penHeight.write(i);
+    delay(10);
+  }
+  penHeight.detach();
+  isPenUp = false;
 }
 void testPenHeight()
 {
@@ -194,6 +207,17 @@ void testPenHeight()
   delay(3000);
   penDown();
   delay(3000);
+}
+void testServoRange()
+{
+  penHeight.attach(PEN_HEIGHT_SERVO_PIN);
+  for (int i=0; i<200; i++) {
+    Serial.println(i);
+    penHeight.write(i);
+    delay(15);
+  }
+  penHeight.detach();
+  
 }
 void establishContact() 
 {
@@ -1149,7 +1173,24 @@ void setPosition()
   accelA.setCurrentPosition(targetA);
   accelB.setCurrentPosition(targetB);
   
+  engageMotors();
+  
   reportPosition();
+}
+
+void engageMotors()
+{
+  accelA.runToNewPosition(accelA.currentPosition()+4);
+  accelB.runToNewPosition(accelB.currentPosition()+4);
+  accelA.runToNewPosition(accelA.currentPosition()-4);
+  accelB.runToNewPosition(accelB.currentPosition()-4);
+}
+
+void releaseMotors()
+{
+  penUp();
+  motora.release();
+  motorb.release();
 }
 
 int getCartesianX() {
