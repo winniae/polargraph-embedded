@@ -3,19 +3,35 @@
 #include <AccelStepper.h>
 #include <avr/pgmspace.h>
 #include <Servo.h>
+#include <EEPROM.h>
+
+//  EEPROM addresses
+const int EEPROM_MACHINE_WIDTH = 0;
+const int EEPROM_MACHINE_HEIGHT = 2;
+const int EEPROM_MACHINE_NAME = 4;
+const int EEPROM_HARDWARE_VERSION = 12;
 
 // Pen raising servo
 Servo penHeight;
-int const UP_POSITION = 90;
-int const DOWN_POSITION = 180;
+int const UP_POSITION = 180;
+int const DOWN_POSITION = 90;
 int const PEN_HEIGHT_SERVO_PIN = 10;
 boolean isPenUp = true;
 
 int motorStepsPerRev = 800;
 float mmPerRev = 95;
 
-float currentMaxSpeed = 600.0;
-float currentAcceleration = 200.0;
+int machineWidth = 650;
+int machineHeight = 800;
+
+const int DEFAULT_MACHINE_WIDTH = 650;
+const int DEFAULT_MACHINE_HEIGHT = 650;
+
+String machineName = "";
+const String DEFAULT_MACHINE_NAME = "PG01    ";
+
+float currentMaxSpeed = 800.0;
+float currentAcceleration = 400.0;
 
 AF_Stepper motora(motorStepsPerRev, 2);
 AF_Stepper motorb(motorStepsPerRev, 1);
@@ -25,7 +41,7 @@ int startLengthMM = 800;
 float mmPerStep = mmPerRev / motorStepsPerRev;
 float stepsPerMM = motorStepsPerRev / mmPerRev;
 
-int pageWidth = 712 * stepsPerMM; // previously 712
+int pageWidth = machineWidth * stepsPerMM; // previously 712
 
 static String rowAxis = "A";
 const int INLENGTH = 50;
@@ -114,6 +130,11 @@ const static String CMD_STARTROVE = "C19";
 const static String CMD_STOPROVE = "C20";
 const static String CMD_SETROVEAREA = "C21";
 
+const static String CMD_SETMACHINESIZE = "C24";
+const static String CMD_SETMACHINENAME = "C25";
+const static String CMD_GETMACHINEDETAILS = "C26";
+const static String CMD_RESETEEPROM = "C27";
+
 
 const static String CMD_END = ",END";
 
@@ -144,6 +165,11 @@ void setup()
   
   accelA.setMinPulseWidth(10);
   accelB.setMinPulseWidth(10);
+  
+  loadMachineSizeFromEeprom();
+  loadMachineNameFromEeprom();
+  
+  
 
   float startLength = ((float) startLengthMM / (float) mmPerRev) * (float) motorStepsPerRev;
   accelA.setCurrentPosition(startLength);
@@ -160,6 +186,41 @@ void setup()
   outputAvailableMemory();
 }
 
+void loadMachineSizeFromEeprom()
+{
+  machineWidth = EEPROMReadInt(EEPROM_MACHINE_WIDTH);
+  if (machineWidth < 1)
+  {
+    machineWidth = DEFAULT_MACHINE_WIDTH;
+  }
+  print_P(PSTR("Loaded machine width:"));
+  Serial.println(machineWidth);
+
+  machineHeight = EEPROMReadInt(EEPROM_MACHINE_HEIGHT);
+  if (machineHeight < 1)
+  {
+    machineHeight = DEFAULT_MACHINE_HEIGHT;
+  }
+  print_P(PSTR("Loaded machine height:"));
+  Serial.println(machineHeight);
+}
+
+void loadMachineNameFromEeprom()
+{
+  String name = "";
+  for (int i = 0; i < 8; i++)
+  {
+    char b = EEPROM.read(EEPROM_MACHINE_NAME+i);
+    name = name + b;
+  }
+  
+  if (name[0] == 0)
+    name = DEFAULT_MACHINE_NAME;
+  
+  machineName = name;
+  print_P(PSTR("Loaded machine name:"));
+  Serial.println(machineName);
+}
 
 void penUp()
 {
@@ -172,7 +233,7 @@ void penUp()
 void movePenUp()
 {
   penHeight.attach(PEN_HEIGHT_SERVO_PIN);
-  for (int i=DOWN_POSITION; i>UP_POSITION; i--) {
+  for (int i=DOWN_POSITION; i<UP_POSITION; i++) {
     Serial.println(i);
     penHeight.write(i);
     delay(10);
@@ -192,7 +253,7 @@ void penDown()
 void movePenDown()
 {
   penHeight.attach(PEN_HEIGHT_SERVO_PIN);
-  for (int i=UP_POSITION; i<DOWN_POSITION; i++) {
+  for (int i=UP_POSITION; i>DOWN_POSITION; i--) {
     Serial.println(i);
     penHeight.write(i);
     delay(10);
@@ -447,6 +508,22 @@ void executeCommand(String inS)
   {
     setRoveArea();
   }
+  else if (inS.startsWith(CMD_SETMACHINESIZE))
+  {
+    setMachineSizeFromCommand();
+  }
+  else if (inS.startsWith(CMD_SETMACHINENAME))
+  {
+    setMachineNameFromCommand();
+  }
+  else if (inS.startsWith(CMD_GETMACHINEDETAILS))
+  {
+    reportMachineDetails();
+  }
+  else if (inS.startsWith(CMD_RESETEEPROM))
+  {
+    resetEeprom();
+  }
   else
   {
     print_P(PSTR("Sorry, "));
@@ -523,6 +600,67 @@ float asFloat(String inParam)
 /****************************************************************************************************************/
 /****************************************************************************************************************/
 /****************************************************************************************************************/
+
+void resetEeprom()
+{
+  for (int i = 0; i <20; i++)
+  {
+    EEPROM.write(i, 0);
+  }
+  loadMachineSizeFromEeprom();
+}
+void dumpEeprom()
+{
+  for (int i = 0; i <20; i++)
+  {
+    Serial.print(i);
+    Serial.print(". ");
+    Serial.println(EEPROM.read(i));
+  }
+}  
+
+void reportMachineDetails()
+{
+  dumpEeprom();
+  print_P(PSTR("PGNAME,"));
+  Serial.print(machineName);
+  Serial.println(CMD_END);
+  
+  print_P(PSTR("PGSIZE,"));
+  Serial.print(machineWidth);
+  print_P(PSTR(","));
+  Serial.print(machineHeight);
+  Serial.println(CMD_END);
+}
+
+void setMachineSizeFromCommand()
+{
+  int width = asInt(inParam1);
+  int height = asInt(inParam2);
+  
+  if (width > 10)
+  {
+    EEPROMWriteInt(EEPROM_MACHINE_WIDTH, width);
+  }
+  if (height > 10)
+  {
+    EEPROMWriteInt(EEPROM_MACHINE_HEIGHT, height);
+  }
+
+  loadMachineSizeFromEeprom();
+}
+void setMachineNameFromCommand()
+{
+  String name = inParam1;
+  if (name != DEFAULT_MACHINE_NAME)
+  {
+    for (int i = 0; i < 8; i++)
+    {
+      EEPROM.write(EEPROM_MACHINE_NAME+i, name[i]);
+    }
+  }
+  loadMachineNameFromEeprom();
+}
 
 void startRoving()
 {
@@ -946,7 +1084,7 @@ void drawScribblePixel(int originA, int originB, int size, int density) {
   int randA;
   int randB;
   
-  int inc = 1;
+  int inc = 0;
   int currSize = size;
   
   for (int i = 0; i <= density; i++)
@@ -1248,6 +1386,28 @@ void error_P(const char* message)        // report an error then hang, flashing 
   {
     digitalWrite(13, (millis() / 512) & 1);
   }
+}
+
+//This function will write a 2 byte integer to the eeprom at the specified address and address + 1
+void EEPROMWriteInt(int p_address, int p_value)
+{
+  print_P(PSTR("Writing Int "));
+  Serial.print(p_value);
+  print_P(PSTR(" to address "));
+  Serial.print(p_address);
+
+  byte lowByte = ((p_value >> 0) & 0xFF);
+  byte highByte = ((p_value >> 8) & 0xFF);
+  EEPROM.write(p_address, lowByte);
+  EEPROM.write(p_address + 1, highByte);
+}
+
+//This function will read a 2 byte integer from the eeprom at the specified address and address + 1
+unsigned int EEPROMReadInt(int p_address)
+{
+  byte lowByte = EEPROM.read(p_address);
+  byte highByte = EEPROM.read(p_address + 1);
+  return ((lowByte << 0) & 0xFF) + ((highByte << 8) & 0xFF00);
 }
 
 
