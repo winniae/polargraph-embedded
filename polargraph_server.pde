@@ -9,7 +9,8 @@
 const int EEPROM_MACHINE_WIDTH = 0;
 const int EEPROM_MACHINE_HEIGHT = 2;
 const int EEPROM_MACHINE_NAME = 4;
-const int EEPROM_HARDWARE_VERSION = 12;
+const int EEPROM_MACHINE_MM_PER_REV = 14;
+const int EEPROM_MACHINE_STEPS_PER_REV = 16;
 
 // Pen raising servo
 Servo penHeight;
@@ -26,6 +27,8 @@ int machineHeight = 800;
 
 const int DEFAULT_MACHINE_WIDTH = 650;
 const int DEFAULT_MACHINE_HEIGHT = 650;
+const int DEFAULT_MM_PER_REV = 95;
+const int DEFAULT_STEPS_PER_REV = 800;
 
 String machineName = "";
 const String DEFAULT_MACHINE_NAME = "PG01    ";
@@ -86,7 +89,20 @@ static String inParam4;
 int inNoOfParams;
 
 static boolean lastWaveWasTop = true;
-static boolean drawingLeftToRight = true;
+//static boolean drawingLeftToRight = true;
+
+//  Drawing direction
+static int DIR_NE = 1;
+static int DIR_SE = 2;
+static int DIR_SW = 3;
+static int DIR_NW = 4;
+
+static int DIR_N = 5;
+static int DIR_E = 6;
+static int DIR_S = 7;
+static int DIR_W = 8;
+
+static int currentDrawDirection = DIR_NW;
 
 static int currentRow = 0;
 
@@ -116,7 +132,7 @@ const static String CMD_CHANGEMOTORACCEL = "C04";
 const static String CMD_DRAWPIXEL = "C05";
 const static String CMD_DRAWSCRIBBLEPIXEL = "C06";
 const static String CMD_DRAWRECT = "C07";
-const static String CMD_CHANGEDRAWINGDIRECTION = "C08";
+//const static String CMD_CHANGEDRAWINGDIRECTION = "C08";
 const static String CMD_SETPOSITION = "C09";
 const static String CMD_TESTPATTERN = "C10";
 const static String CMD_TESTPENWIDTHSQUARE = "C11";
@@ -134,6 +150,13 @@ const static String CMD_SETMACHINESIZE = "C24";
 const static String CMD_SETMACHINENAME = "C25";
 const static String CMD_GETMACHINEDETAILS = "C26";
 const static String CMD_RESETEEPROM = "C27";
+const static String CMD_DRAWDIRECTIONTEST = "C28";
+
+const static String CMD_SETMACHINEMMPERREV = "C29";
+const static String CMD_SETMACHINESTEPSPERREV = "C30";
+
+const static String CMD_SETMOTORSPEED = "C31";
+const static String CMD_SETMOTORACCEL = "C32";
 
 
 const static String CMD_END = ",END";
@@ -163,20 +186,12 @@ void setup()
   accelB.setMaxSpeed(currentMaxSpeed);
   accelB.setAcceleration(currentAcceleration);
   
-  accelA.setMinPulseWidth(10);
-  accelB.setMinPulseWidth(10);
-  
-  loadMachineSizeFromEeprom();
-  loadMachineNameFromEeprom();
-  
-  
+  loadMachineSpecFromEeprom();
 
   float startLength = ((float) startLengthMM / (float) mmPerRev) * (float) motorStepsPerRev;
   accelA.setCurrentPosition(startLength);
   accelB.setCurrentPosition(startLength);
 
-  drawingLeftToRight = true;
-  
   //testServoRange();
   movePenUp();
 
@@ -188,7 +203,7 @@ void setup()
 
 
 
-void loadMachineSizeFromEeprom()
+void loadMachineSpecFromEeprom()
 {
   machineWidth = EEPROMReadInt(EEPROM_MACHINE_WIDTH);
   if (machineWidth < 1)
@@ -205,10 +220,24 @@ void loadMachineSizeFromEeprom()
   }
   print_P(PSTR("Loaded machine height:"));
   Serial.println(machineHeight);
-}
 
-void loadMachineNameFromEeprom()
-{
+  mmPerRev = EEPROMReadInt(EEPROM_MACHINE_MM_PER_REV);
+  if (mmPerRev < 1)
+  {
+    mmPerRev = DEFAULT_MM_PER_REV;
+  }
+  print_P(PSTR("Loaded mm per rev:"));
+  Serial.println(mmPerRev);
+
+  motorStepsPerRev = EEPROMReadInt(EEPROM_MACHINE_STEPS_PER_REV);
+  if (motorStepsPerRev < 1)
+  {
+    motorStepsPerRev = DEFAULT_STEPS_PER_REV;
+  }
+  print_P(PSTR("Loaded motor steps per rev:"));
+  Serial.println(motorStepsPerRev);
+
+
   String name = "";
   for (int i = 0; i < 8; i++)
   {
@@ -236,7 +265,7 @@ void movePenUp()
 {
   penHeight.attach(PEN_HEIGHT_SERVO_PIN);
   for (int i=DOWN_POSITION; i<UP_POSITION; i++) {
-    Serial.println(i);
+//    Serial.println(i);
     penHeight.write(i);
     delay(10);
   }
@@ -256,7 +285,7 @@ void movePenDown()
 {
   penHeight.attach(PEN_HEIGHT_SERVO_PIN);
   for (int i=UP_POSITION; i>DOWN_POSITION; i--) {
-    Serial.println(i);
+//    Serial.println(i);
     penHeight.write(i);
     delay(10);
   }
@@ -446,6 +475,14 @@ void executeCommand(String inS)
   {
     changeMotorAcceleration();
   }
+  else if (inS.startsWith(CMD_SETMOTORSPEED))
+  {
+    setMotorSpeed();
+  }
+  else if (inS.startsWith(CMD_SETMOTORACCEL))
+  {
+    setMotorAcceleration();
+  }
   else if (inS.startsWith(CMD_DRAWPIXEL))
   {
     // go to coordinates.
@@ -462,11 +499,6 @@ void executeCommand(String inS)
 //    Serial.println(inS);
     // go to coordinates.
     drawRectangle();
-  }
-  else if (inS.startsWith(CMD_CHANGEDRAWINGDIRECTION))
-  {
-//    Serial.println(inS);
-    changeDrawingDirection();
   }
   else if (inS.startsWith(CMD_SETPOSITION))
   {
@@ -518,13 +550,25 @@ void executeCommand(String inS)
   {
     setMachineNameFromCommand();
   }
+  else if (inS.startsWith(CMD_SETMACHINEMMPERREV))
+  {
+    setMachineMmPerRevFromCommand();
+  }
+  else if (inS.startsWith(CMD_SETMACHINESTEPSPERREV))
+  {
+    setMachineStepsPerRevFromCommand();
+  }
   else if (inS.startsWith(CMD_GETMACHINEDETAILS))
   {
-    reportMachineDetails();
+    reportMachineSpec();
   }
   else if (inS.startsWith(CMD_RESETEEPROM))
   {
     resetEeprom();
+  }
+  else if (inS.startsWith(CMD_DRAWDIRECTIONTEST))
+  {
+    drawTestDirectionSquare();
   }
   else
   {
@@ -609,7 +653,7 @@ void resetEeprom()
   {
     EEPROM.write(i, 0);
   }
-  loadMachineSizeFromEeprom();
+  loadMachineSpecFromEeprom();
 }
 void dumpEeprom()
 {
@@ -621,7 +665,7 @@ void dumpEeprom()
   }
 }  
 
-void reportMachineDetails()
+void reportMachineSpec()
 {
   dumpEeprom();
   print_P(PSTR("PGNAME,"));
@@ -632,6 +676,14 @@ void reportMachineDetails()
   Serial.print(machineWidth);
   print_P(PSTR(","));
   Serial.print(machineHeight);
+  Serial.println(CMD_END);
+
+  print_P(PSTR("PGMMPERREV,"));
+  Serial.print(mmPerRev);
+  Serial.println(CMD_END);
+
+  print_P(PSTR("PGSTEPSPERREV,"));
+  Serial.print(motorStepsPerRev);
   Serial.println(CMD_END);
 }
 
@@ -649,7 +701,7 @@ void setMachineSizeFromCommand()
     EEPROMWriteInt(EEPROM_MACHINE_HEIGHT, height);
   }
 
-  loadMachineSizeFromEeprom();
+  loadMachineSpecFromEeprom();
 }
 void setMachineNameFromCommand()
 {
@@ -661,7 +713,20 @@ void setMachineNameFromCommand()
       EEPROM.write(EEPROM_MACHINE_NAME+i, name[i]);
     }
   }
-  loadMachineNameFromEeprom();
+  loadMachineSpecFromEeprom();
+}
+
+void setMachineMmPerRevFromCommand()
+{
+  int mmPerRev = asInt(inParam1);
+  EEPROMWriteInt(EEPROM_MACHINE_MM_PER_REV, mmPerRev);
+  loadMachineSpecFromEeprom();
+}
+void setMachineStepsPerRevFromCommand()
+{
+  int stepsPerRev = asInt(inParam1);
+  EEPROMWriteInt(EEPROM_MACHINE_STEPS_PER_REV, stepsPerRev);
+  loadMachineSpecFromEeprom();
 }
 
 //void startRoving()
@@ -754,28 +819,45 @@ void setMachineNameFromCommand()
 //  }
 //}
 
+void setMotorSpeed()
+{
+  setMotorSpeed(asFloat(inParam1));
+}
+
+void setMotorSpeed(float speed)
+{
+  currentMaxSpeed = speed;
+  accelA.setMaxSpeed(currentMaxSpeed);
+  accelB.setMaxSpeed(currentMaxSpeed);
+  print_P(PSTR("New max speed: "));
+  Serial.println(currentMaxSpeed);
+}
+
 void changeMotorSpeed()
 {
   float speedChange = asFloat(inParam1);
-  print_P(PSTR("Speed changing: "));
-  Serial.print(speedChange);
-  currentMaxSpeed += speedChange;
-  accelA.setMaxSpeed(currentMaxSpeed);
-  accelB.setMaxSpeed(currentMaxSpeed);
-  print_P(PSTR(", to "));
-  Serial.println(currentMaxSpeed);
+  float newSpeed = currentMaxSpeed + speedChange;
+  setMotorSpeed(newSpeed);
  }
+ 
+void setMotorAcceleration()
+{
+  setMotorAcceleration(asFloat(inParam1));
+}
+void setMotorAcceleration(float accel)
+{
+  currentAcceleration = accel;
+  accelA.setAcceleration(currentAcceleration);
+  accelB.setAcceleration(currentAcceleration);
+  print_P(PSTR("New acceleration: "));
+  Serial.println(currentAcceleration);
+}
 void changeMotorAcceleration()
 {
   float speedChange = asFloat(inParam1);
-  print_P(PSTR("Acceleration changing: "));
-  Serial.print(speedChange);
-  currentAcceleration += speedChange;
-  accelA.setAcceleration(currentAcceleration);
-  accelB.setAcceleration(currentAcceleration);
-  print_P(PSTR(", to "));
-  Serial.println(currentAcceleration);
- }
+  float newAccel = currentAcceleration + speedChange;
+  setMotorAcceleration(newAccel);
+}
 
 void changePenWidth()
 {
@@ -785,15 +867,6 @@ void changePenWidth()
   print_P(PSTR("mm"));
   Serial.println();
  }   
-
- void changeDrawingDirection() {
-  rowAxis = inParam1;
-    
-  if (inParam2.equals(DIRECTION_STRING_LTR))
-    drawingLeftToRight = true;
-  else
-    drawingLeftToRight = false;
- }
 
   void extractParams(String inS) {
     
@@ -855,7 +928,7 @@ void changePenWidth()
     {
       for (int i = 0;  i <= maxDensity(penWidth, w); i++)
       {
-        drawSquarePixel(w, i, ltr);
+        drawSquarePixel(w, w, i, ltr);
       }
       if (ltr)
         ltr = false;
@@ -889,7 +962,7 @@ void changePenWidth()
       Serial.print(penWidth);
       print_P(PSTR(", max density: "));
       Serial.println(maxDens);
-      drawSquarePixel(rowWidth, maxDens, true);
+      drawSquarePixel(rowWidth, rowWidth, maxDens, true);
     }
 
     penWidth = oldPenWidth;
@@ -1023,7 +1096,26 @@ void changeLengthRelative(int tA, int tB)
   reportPosition();
 }
 
-void drawSquarePixel() {
+void drawTestDirectionSquare()
+{
+  int rowWidth = asInt(inParam1);
+  int segments = asInt(inParam2);
+  drawSquarePixel(rowWidth, rowWidth, segments, DIR_SE);
+  moveA(rowWidth*2);
+  
+  drawSquarePixel(rowWidth, rowWidth, segments, DIR_SW);
+  moveB(rowWidth*2);
+  
+  drawSquarePixel(rowWidth, rowWidth, segments, DIR_NW);
+  moveA(0-(rowWidth*2));
+  
+  drawSquarePixel(rowWidth, rowWidth, segments, DIR_NE);
+  moveB(0-(rowWidth*2));
+  
+}
+
+void drawSquarePixel() 
+{
     int originA = asInt(inParam1);
     int originB = asInt(inParam2);
     int size = asInt(inParam3);
@@ -1031,33 +1123,146 @@ void drawSquarePixel() {
 
     int halfSize = size / 2;
     
-    int startPoint;
-    int endPoint;
-    int endPoint2;
+    int startPointA;
+    int startPointB;
+    int endPointA;
+    int endPointB;
 
     int calcFullSize = halfSize * 2; // see if there's any rounding errors
     int offsetStart = size - calcFullSize;
+    
+    int drawDirection = getDrawDirection(originA, originB, accelA.currentPosition(), accelB.currentPosition());
+    
 
-    if (drawingLeftToRight) {
-      startPoint = originA - (halfSize);
-      startPoint -= offsetStart;
-      endPoint = originA + (halfSize);
+    if (drawDirection == DIR_SE) 
+    {
+      Serial.println("d: SE");
+      startPointA = originA - halfSize;
+      startPointA += offsetStart;
+      startPointB = originB;
+      endPointA = originA + halfSize;
+      endPointB = originB;
     }
-    else {
-      startPoint = originA + (halfSize);
-      startPoint += offsetStart;
-      endPoint = originA - (halfSize);
+    else if (drawDirection == DIR_SW)
+    {
+      Serial.println("d: SW");
+      startPointA = originA;
+      startPointB = originB - halfSize;
+      startPointB += offsetStart;
+      endPointA = originA;
+      endPointB = originB + halfSize;
+    }
+    else if (drawDirection == DIR_NW)
+    {
+      Serial.println("d: NW");
+      startPointA = originA + halfSize;
+      startPointA -= offsetStart;
+      startPointB = originB;
+      endPointA = originA - halfSize;
+      endPointB = originB;
+    }
+    else //(drawDirection == DIR_NE)
+    {
+      Serial.println("d: NE");
+      startPointA = originA;
+      startPointB = originB + halfSize;
+      startPointB -= offsetStart;
+      endPointA = originA;
+      endPointB = originB - halfSize;
     }
 
     density = scaleDensity(density, 255, maxDensity(penWidth, size));
-    changeLength(startPoint, originB);
+    Serial.print("Start point: ");
+    Serial.print(startPointA);
+    Serial.print(",");
+    Serial.print(startPointB);
+    Serial.print(". end point: ");
+    Serial.print(endPointA);
+    Serial.print(",");
+    Serial.print(endPointB);
+    Serial.println(".");
+    
+    changeLength(startPointA, startPointB);
     if (density > 1)
     {
-      drawSquarePixel(size, density, drawingLeftToRight);
+      drawSquarePixel(size, size, density, drawDirection);
     }
-    changeLength(endPoint, originB);
+    changeLength(endPointA, endPointB);
     
     outputAvailableMemory(); 
+}
+
+byte getDrawDirection(long targetA, long targetB, long sourceA, long sourceB)
+{
+  byte dir = DIR_SE;
+  
+  // some bitchin triangles, I goshed-well love triangles.
+  long diffA = sourceA - targetA;
+  long diffB = sourceB - targetB;
+  long hyp = sqrt(sq(diffA)+sq(diffB));
+  
+  float bearing = atan(hyp/diffA);
+  
+  Serial.print("bearing:");
+  Serial.println(bearing);
+  
+  Serial.print("TargetA: ");
+  Serial.print(targetA);
+  Serial.print(", targetB: ");
+  Serial.print(targetB);
+  Serial.print(". SourceA: ");
+  Serial.print(sourceA);
+  Serial.print(", sourceB: ");
+  Serial.print(sourceB);
+  Serial.println(".");
+  
+  
+  if (targetA<sourceA && targetB<sourceA)
+  {
+    Serial.println("calculated NW");
+    dir = DIR_NW;
+  }
+  else if (targetA>sourceA && targetB>sourceB)
+  {
+    Serial.println("calculated SE");
+    dir = DIR_SE;
+  }
+  else if (targetA<sourceA && targetB>sourceB)
+  {
+    Serial.println("calculated SW");
+    dir = DIR_SW;
+  }
+  else if (targetA>sourceA && targetB<sourceB)
+  {
+    Serial.println("calculated NE");
+    dir = DIR_NE;
+  }
+  else if (targetA==sourceA && targetB<sourceB)
+  {
+    Serial.println("calc NE");
+    dir = DIR_NE;
+  }
+  else if (targetA==sourceA && targetB>sourceB)
+  {
+    Serial.println("calc SW");
+    dir = DIR_SW;
+  }
+  else if (targetA<sourceA && targetB==sourceB)
+  {
+    Serial.println("calc NW");
+    dir = DIR_NW;
+  }
+  else if (targetA>sourceA && targetB==sourceB)
+  {
+    Serial.println("calc SE");
+    dir = DIR_SE;
+  }
+  else
+  {
+    Serial.println("Not calculated - default SE");
+  }
+
+  return dir;
 }
 
 void drawScribblePixel() {
@@ -1168,110 +1373,147 @@ int scaleDensity(int inDens, int inMax, int outMax)
   return result;
 }
 
-void drawSquarePixel(int size, int density, boolean drawingLeftToRight) {
-  
+void drawSquarePixel(int length, int width, int density, byte drawDirection) 
+{
   // work out how wide each segment should be
-  int segmentWidth = 0;
-  int segmentWidthSoFar = 0;
+  int segmentLength = 0;
 
-  if (density < 1)
-  {
-    if (drawingLeftToRight)
-      moveA(size);
-    else
-      moveA(0-size);
-  }
-  else
+  if (density > 0)
   {
     // work out some segment widths
-    int basicSegWidth = size / density;
-    int basicSegRemainder = size % density;
+    int basicSegLength = length / density;
+    int basicSegRemainder = length % density;
     float remainderPerSegment = float(basicSegRemainder) / float(density);
     float totalRemainder = 0.0;
-    int distanceSoFar = 0;
+    int lengthSoFar = 0;
     
-//    Serial.print("Basic seg width:");
-//    Serial.print(basicSegWidth);
-//    Serial.print(", basic seg remainder:");
-//    Serial.print(basicSegRemainder);
-//    Serial.print(", remainder per seg");
-//    Serial.println(remainderPerSegment);
+    Serial.print("Basic seg length:");
+    Serial.print(basicSegLength);
+    Serial.print(", basic seg remainder:");
+    Serial.print(basicSegRemainder);
+    Serial.print(", remainder per seg");
+    Serial.println(remainderPerSegment);
     
     for (int i = 0; i <= density; i++) 
     {
-//      Serial.print("segment #");
-//      Serial.print(i);
-      
       totalRemainder += remainderPerSegment;
-//      Serial.print(", totalRemainder:");
-//      Serial.print(totalRemainder);
 
       if (totalRemainder >= 1.0)
       {
         totalRemainder -= 1.0;
-        segmentWidth = basicSegWidth+1;
+        segmentLength = basicSegLength+1;
       }
       else
       {
-        segmentWidth = basicSegWidth;
+        segmentLength = basicSegLength;
       }
 
-//      Serial.print("segment #");
-//      Serial.print(i);
-//      Serial.print(", SegmentWidth: ");
-//      Serial.println(segmentWidth);
-
-      
-      if (!drawingLeftToRight) {
-        segmentWidth = 0 - segmentWidth; // reverse
+      if (drawDirection == DIR_SE) {
+        drawSquareWaveAlongA(width, segmentLength, density, i);
       }
-      
-      
-      if (i == 0) 
-      { // first one, half a line and an along
-//        Serial.println("First one.");
-        if (lastWaveWasTop) {
-          moveB(size/2);
-          moveA(segmentWidth);
-        }
-        else {
-          moveB(0-(size/2));
-          moveA(segmentWidth);
-        }
-        flipWaveDirection();
+      if (drawDirection == DIR_SW) {
+        drawSquareWaveAlongB(width, segmentLength, density, i);
       }
-      else if (i == density) 
-      { // last one, half a line with no along
-//        moveA(segmentWidth);
-          
-        if (lastWaveWasTop) {
-          moveB(size/2);
-        }
-        else {
-          moveB(0-(size/2));
-        }
+      if (drawDirection == DIR_NW) {
+        segmentLength = 0 - segmentLength; // reverse
+        drawSquareWaveAlongA(width, segmentLength, density, i);
       }
-      else 
-      { // intervening lines - full lines, and an along
-        if (lastWaveWasTop) {
-          moveB(size);
-          moveA(segmentWidth);
-        }
-        else {
-          moveB(0-size);
-          moveA(segmentWidth);
-        }
-        flipWaveDirection();
+      if (drawDirection == DIR_NE) {
+        segmentLength = 0 - segmentLength; // reverse
+        drawSquareWaveAlongB(width, segmentLength, density, i);
       }
+      lengthSoFar += segmentLength;
+    //      Serial.print("distance so far:");
+    //      Serial.print(distanceSoFar);
       
-      distanceSoFar += segmentWidth;
-//      Serial.print("distance so far:");
-//      Serial.print(distanceSoFar);
       
       reportPosition();
-    }
+    } // end of loop
   }
 }
+
+
+void drawSquareWaveAlongA(int waveAmplitude, int waveLength, int totalWaves, int waveNo)
+{
+  if (waveNo == 0) 
+  { 
+    // first one, half a line and an along
+    Serial.println("First wave half");
+    if (lastWaveWasTop) {
+      moveB(waveAmplitude/2);
+      moveA(waveLength);
+    }
+    else {
+      moveB(0-(waveAmplitude/2));
+      moveA(waveLength);
+    }
+    flipWaveDirection();
+  }
+  else if (waveNo == totalWaves) 
+  { 
+    // last one, half a line with no along
+    if (lastWaveWasTop) {
+      moveB(waveAmplitude/2);
+    }
+    else {
+      moveB(0-(waveAmplitude/2));
+    }
+  }
+  else 
+  { 
+    // intervening lines - full lines, and an along
+    if (lastWaveWasTop) {
+      moveB(waveAmplitude);
+      moveA(waveLength);
+    }
+    else {
+      moveB(0-waveAmplitude);
+      moveA(waveLength);
+    }
+    flipWaveDirection();
+  }
+}
+
+void drawSquareWaveAlongB(int waveAmplitude, int waveLength, int totalWaves, int waveNo)
+{
+  if (waveNo == 0) 
+  { 
+    // first one, half a line and an along
+    if (lastWaveWasTop) {
+      moveA(waveAmplitude/2);
+      moveB(waveLength);
+    }
+    else {
+      moveA(0-(waveAmplitude/2));
+      moveB(waveLength);
+    }
+    flipWaveDirection();
+  }
+  else if (waveNo == totalWaves) 
+  { 
+    // last one, half a line with no along
+    if (lastWaveWasTop) {
+      moveA(waveAmplitude/2);
+    }
+    else {
+      moveA(0-(waveAmplitude/2));
+    }
+  }
+  else 
+  { 
+    // intervening lines - full lines, and an along
+    if (lastWaveWasTop) {
+      moveA(waveAmplitude);
+      moveB(waveLength);
+    }
+    else {
+      moveA(0-waveAmplitude);
+      moveB(waveLength);
+    }
+    flipWaveDirection();
+  }
+}
+
 
 void flipWaveDirection()
 {
@@ -1396,7 +1638,7 @@ void EEPROMWriteInt(int p_address, int p_value)
   print_P(PSTR("Writing Int "));
   Serial.print(p_value);
   print_P(PSTR(" to address "));
-  Serial.print(p_address);
+  Serial.println(p_address);
 
   byte lowByte = ((p_value >> 0) & 0xFF);
   byte highByte = ((p_value >> 8) & 0xFF);
