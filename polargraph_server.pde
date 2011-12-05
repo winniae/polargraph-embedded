@@ -20,7 +20,7 @@ int const PEN_HEIGHT_SERVO_PIN = 10;
 boolean isPenUp = true;
 
 int motorStepsPerRev = 800;
-float mmPerRev = 95;
+float mmPerRev = 84;
 
 int machineWidth = 650;
 int machineHeight = 800;
@@ -92,17 +92,22 @@ static boolean lastWaveWasTop = true;
 //static boolean drawingLeftToRight = true;
 
 //  Drawing direction
-static int DIR_NE = 1;
-static int DIR_SE = 2;
-static int DIR_SW = 3;
-static int DIR_NW = 4;
+const static byte DIR_NE = 1;
+const static byte DIR_SE = 2;
+const static byte DIR_SW = 3;
+const static byte DIR_NW = 4;
 
-static int DIR_N = 5;
-static int DIR_E = 6;
-static int DIR_S = 7;
-static int DIR_W = 8;
+const static byte DIR_N = 5;
+const static byte DIR_E = 6;
+const static byte DIR_S = 7;
+const static byte DIR_W = 8;
+static int globalDrawDirection = DIR_NW;
 
-static int currentDrawDirection = DIR_NW;
+const static byte DIR_MODE_AUTO = 1;
+const static byte DIR_MODE_PRESET = 2;
+const static byte DIR_MODE_RANDOM = 3;
+static int globalDrawDirectionMode = DIR_MODE_AUTO;
+
 
 static int currentRow = 0;
 
@@ -132,7 +137,7 @@ const static String CMD_CHANGEMOTORACCEL = "C04";
 const static String CMD_DRAWPIXEL = "C05";
 const static String CMD_DRAWSCRIBBLEPIXEL = "C06";
 const static String CMD_DRAWRECT = "C07";
-//const static String CMD_CHANGEDRAWINGDIRECTION = "C08";
+const static String CMD_CHANGEDRAWINGDIRECTION = "C08";
 const static String CMD_SETPOSITION = "C09";
 const static String CMD_TESTPATTERN = "C10";
 const static String CMD_TESTPENWIDTHSQUARE = "C11";
@@ -500,6 +505,11 @@ void executeCommand(String inS)
     // go to coordinates.
     drawRectangle();
   }
+  else if (inS.startsWith(CMD_CHANGEDRAWINGDIRECTION))
+  {
+//    Serial.println(inS);
+    changeDrawingDirection();
+  }
   else if (inS.startsWith(CMD_SETPOSITION))
   {
 //    Serial.println(inS);
@@ -629,6 +639,11 @@ int asInt(String inParam)
   char paramChar[inParam.length() + 1];
   inParam.toCharArray(paramChar, inParam.length() + 1);
   return atoi(paramChar);
+}
+byte asByte(String inParam)
+{
+  int i = asInt(inParam);
+  return (byte) i;
 }
 float asFloat(String inParam)
 {
@@ -868,6 +883,16 @@ void changePenWidth()
   Serial.println();
  }   
 
+void changeDrawingDirection() 
+{
+  globalDrawDirectionMode = asInt(inParam1);
+  globalDrawDirection = asInt(inParam2);
+  Serial.print("Changed draw direction mode to be ");
+  Serial.print(globalDrawDirectionMode);
+  Serial.print(" and direction is ");
+  Serial.println(globalDrawDirection);
+}
+
   void extractParams(String inS) {
     
     // get number of parameters
@@ -905,16 +930,16 @@ void changePenWidth()
     }
     inNoOfParams = paramNumber;
     
-//    Serial.print("Command:");
-//    Serial.print(inParam1);
-//    Serial.print(", p1:");
-//    Serial.print(inParam1);
-//    Serial.print(", p2:");
-//    Serial.print(inParam2);
-//    Serial.print(", p3:");
-//    Serial.print(inParam3);
-//    Serial.print(", p4:");
-//    Serial.println(inParam4);
+    Serial.print("Command:");
+    Serial.print(inCmd);
+    Serial.print(", p1:");
+    Serial.print(inParam1);
+    Serial.print(", p2:");
+    Serial.print(inParam2);
+    Serial.print(", p3:");
+    Serial.print(inParam3);
+    Serial.print(", p4:");
+    Serial.println(inParam4);
   }
   
   void testPattern()
@@ -945,8 +970,9 @@ void changePenWidth()
     float startWidth = asFloat(inParam2);
     float endWidth = asFloat(inParam3); 
     float incSize = asFloat(inParam4);
-    
-    boolean ltr = true;
+
+    int tempDirectionMode = globalDrawDirectionMode;
+    globalDrawDirectionMode = DIR_MODE_PRESET;
     
     float oldPenWidth = penWidth;
     int iterations = 0;
@@ -962,7 +988,7 @@ void changePenWidth()
       Serial.print(penWidth);
       print_P(PSTR(", max density: "));
       Serial.println(maxDens);
-      drawSquarePixel(rowWidth, rowWidth, maxDens, true);
+      drawSquarePixel(rowWidth, rowWidth, maxDens, DIR_SE);
     }
 
     penWidth = oldPenWidth;
@@ -976,6 +1002,7 @@ void changePenWidth()
     }
     
     penWidth = oldPenWidth;
+    globalDrawDirectionMode = tempDirectionMode;
   }    
 
   void testPenWidthScribble()
@@ -1131,10 +1158,11 @@ void drawSquarePixel()
     int calcFullSize = halfSize * 2; // see if there's any rounding errors
     int offsetStart = size - calcFullSize;
     
-    int drawDirection = getDrawDirection(originA, originB, accelA.currentPosition(), accelB.currentPosition());
-    
+    if (globalDrawDirectionMode == DIR_MODE_AUTO)
+      globalDrawDirection = getAutoDrawDirection(originA, originB, accelA.currentPosition(), accelB.currentPosition());
+      
 
-    if (drawDirection == DIR_SE) 
+    if (globalDrawDirection == DIR_SE) 
     {
       Serial.println("d: SE");
       startPointA = originA - halfSize;
@@ -1143,7 +1171,7 @@ void drawSquarePixel()
       endPointA = originA + halfSize;
       endPointB = originB;
     }
-    else if (drawDirection == DIR_SW)
+    else if (globalDrawDirection == DIR_SW)
     {
       Serial.println("d: SW");
       startPointA = originA;
@@ -1152,7 +1180,7 @@ void drawSquarePixel()
       endPointA = originA;
       endPointB = originB + halfSize;
     }
-    else if (drawDirection == DIR_NW)
+    else if (globalDrawDirection == DIR_NW)
     {
       Serial.println("d: NW");
       startPointA = originA + halfSize;
@@ -1185,14 +1213,19 @@ void drawSquarePixel()
     changeLength(startPointA, startPointB);
     if (density > 1)
     {
-      drawSquarePixel(size, size, density, drawDirection);
+      drawSquarePixel(size, size, density, globalDrawDirection);
     }
     changeLength(endPointA, endPointB);
     
     outputAvailableMemory(); 
 }
 
-byte getDrawDirection(long targetA, long targetB, long sourceA, long sourceB)
+byte getRandomDrawDirection()
+{
+  return random(1, 5);
+}
+
+byte getAutoDrawDirection(long targetA, long targetB, long sourceA, long sourceB)
 {
   byte dir = DIR_SE;
   
