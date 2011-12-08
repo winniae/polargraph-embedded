@@ -113,7 +113,6 @@ static int currentRow = 0;
 
 const String READY = "READY";
 const String RESEND = "RESEND";
-const String ACK = "ACK";
 const String DRAWING = "DRAWING";
 static String readyString = READY;
 
@@ -127,8 +126,9 @@ int roveMinB = 0;
 
 boolean roving = false;
 
+const static String COMMA = ",";
 const static String CMD_EXEC = "EXEC";
-const static String CMD_ACK = "ACK";
+const static String CMD_ACK = "ACK,";
 
 const static String CMD_CHANGELENGTH = "C01";
 const static String CMD_CHANGEPENWIDTH = "C02";
@@ -331,7 +331,6 @@ void drawing()
 void acknowledge(String command)
 {
   Serial.print(CMD_ACK);
-  print_P(PSTR(","));
   Serial.println(command);
 }
 
@@ -689,7 +688,7 @@ void reportMachineSpec()
   
   print_P(PSTR("PGSIZE,"));
   Serial.print(machineWidth);
-  print_P(PSTR(","));
+  Serial.print(COMMA);
   Serial.print(machineHeight);
   Serial.println(CMD_END);
 
@@ -1202,11 +1201,11 @@ void drawSquarePixel()
     density = scaleDensity(density, 255, maxDensity(penWidth, size));
     Serial.print("Start point: ");
     Serial.print(startPointA);
-    Serial.print(",");
+    Serial.print(COMMA);
     Serial.print(startPointB);
     Serial.print(". end point: ");
     Serial.print(endPointA);
-    Serial.print(",");
+    Serial.print(COMMA);
     Serial.print(endPointB);
     Serial.println(".");
     
@@ -1573,7 +1572,7 @@ void reportPosition()
 {
   print_P(PSTR("SYNC,"));
   Serial.print(accelA.currentPosition());
-  print_P(PSTR(","));
+  Serial.print(COMMA);
   Serial.print(accelB.currentPosition());
   Serial.println(CMD_END);
   outputAvailableMemory();
