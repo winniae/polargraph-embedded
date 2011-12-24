@@ -20,7 +20,7 @@ int const PEN_HEIGHT_SERVO_PIN = 10;
 boolean isPenUp = true;
 
 int motorStepsPerRev = 800;
-float mmPerRev = 84;
+float mmPerRev = 95;
 
 int machineWidth = 650;
 int machineHeight = 800;
@@ -44,7 +44,7 @@ int startLengthMM = 800;
 float mmPerStep = mmPerRev / motorStepsPerRev;
 float stepsPerMM = motorStepsPerRev / mmPerRev;
 
-int pageWidth = machineWidth * stepsPerMM; // previously 712
+int pageWidth = machineWidth * stepsPerMM;
 
 static String rowAxis = "A";
 const int INLENGTH = 50;
@@ -145,6 +145,7 @@ const static String CMD_TESTPENWIDTHSCRIBBLE = "C12";
 const static String CMD_PENDOWN = "C13";
 const static String CMD_PENUP = "C14";
 
+const static String CMD_CHANGELENGTHDIRECT = "C17";
 const static String CMD_LOADMAGEFILE = "C23";
 
 const static String CMD_STARTROVE = "C19";
@@ -185,13 +186,12 @@ void setup()
 
   pinMode(53, OUTPUT); // necessary for SD card reading to work
 
+  loadMachineSpecFromEeprom();
 
   accelA.setMaxSpeed(currentMaxSpeed);
   accelA.setAcceleration(currentAcceleration);  
   accelB.setMaxSpeed(currentMaxSpeed);
   accelB.setAcceleration(currentAcceleration);
-  
-  loadMachineSpecFromEeprom();
 
   float startLength = ((float) startLengthMM / (float) mmPerRev) * (float) motorStepsPerRev;
   accelA.setCurrentPosition(startLength);
@@ -217,7 +217,7 @@ void loadMachineSpecFromEeprom()
   }
   print_P(PSTR("Loaded machine width:"));
   Serial.println(machineWidth);
-
+  
   machineHeight = EEPROMReadInt(EEPROM_MACHINE_HEIGHT);
   if (machineHeight < 1)
   {
@@ -241,6 +241,22 @@ void loadMachineSpecFromEeprom()
   }
   print_P(PSTR("Loaded motor steps per rev:"));
   Serial.println(motorStepsPerRev);
+
+  mmPerStep = mmPerRev / motorStepsPerRev;
+  stepsPerMM = motorStepsPerRev / mmPerRev;
+  
+  print_P(PSTR("Recalculated mmPerStep ("));
+  Serial.print(mmPerStep);
+  print_P(PSTR(") and stepsPerMM ("));
+  Serial.print(stepsPerMM);
+  print_P(PSTR(")"));
+  Serial.println();
+  
+  pageWidth = machineWidth * stepsPerMM;
+  print_P(PSTR("Recalculated pageWidth in steps ("));
+  Serial.print(pageWidth);
+  print_P(PSTR(")"));
+  Serial.println();
 
 
   String name = "";
@@ -466,6 +482,10 @@ void executeCommand(String inS)
   if (inS.startsWith(CMD_CHANGELENGTH))
   {
     changeLength();
+  }
+  else if (inS.startsWith(CMD_CHANGELENGTHDIRECT))
+  {
+    changeLengthDirect();
   }
   else if (inS.startsWith(CMD_CHANGEPENWIDTH))
   {
@@ -1122,6 +1142,154 @@ void changeLengthRelative(int tA, int tB)
   reportPosition();
 }
 
+void changeLengthDirect()
+{
+  float endA = asFloat(inParam1);
+  float endB = asFloat(inParam2);
+  int maxLength = asInt(inParam3);
+
+  float startA = accelA.currentPosition();
+  float startB = accelB.currentPosition();
+  print_P(PSTR("Drawing direct line"));
+  
+  drawBetweenPoints(startA, startB, endA, endB, maxLength);
+}  
+
+void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength)
+{
+  // ok, we're going to plot some dots between p1 and p2.  Using maths. I know! Brave new world etc.
+  
+//  print_P(PSTR("Current native pos: "));
+//  Serial.print(p1a);
+//  Serial.print(COMMA);
+//  Serial.println(p1b);
+//  
+//  print_P(PSTR("Target native pos: "));
+//  Serial.print(p2a);
+//  Serial.print(COMMA);
+//  Serial.println(p2b);
+
+  // First, convert these values to cartesian coordinates
+  // We're going to figure out how many segments the line
+  // needs chopping into.
+  int c1x = getCartesianX(p1a, p1b);
+  int c1y = getCartesianY(c1x, p1a);
+  
+  int c2x = getCartesianX(p2a, p2b);
+  int c2y = getCartesianY(c2x, p2a);
+  
+  print_P(PSTR("Origin cartesian coords: "));
+  Serial.print(c1x*mmPerStep);
+  Serial.print(COMMA);
+  Serial.println(c1y*mmPerStep);
+
+  print_P(PSTR("Target cartesian coords: "));
+  Serial.print(c2x*mmPerStep);
+  Serial.print(COMMA);
+  Serial.println(c2y*mmPerStep);
+  
+  int deltaX = c2x-c1x;    // distance each must move (signed)
+  int deltaY = c2y-c1y;
+
+//  print_P(PSTR("DeltaX and Y: "));
+//  Serial.print(deltaX);
+//  Serial.print(COMMA);
+//  Serial.print(deltaY);
+//  Serial.println();
+
+  int xy_incmax = maxLength;  // smallest chop in step counts? configurable?
+   
+  int linesegs = 1;            // assume at least 1 line segment will get us there.
+  if (abs(deltaX) > abs(deltaY))
+  {
+    // slope <=1 case    
+    while ((abs(deltaX)/linesegs) > xy_incmax)
+    {
+      linesegs++;
+    }
+  }
+  else
+  {
+    // slope >1 case
+    while ((abs(deltaY)/linesegs) > xy_incmax)
+    {
+      linesegs++;
+    }
+  }
+
+//  print_P(PSTR("Line segments "));
+//  Serial.println(linesegs);
+   
+  int deltaXIncrement = deltaX;
+  int deltaYIncrement = deltaY;
+   
+//  print_P(PSTR("DeltaX and Y: "));
+//  Serial.print(deltaX);
+//  Serial.print(COMMA);
+//  Serial.print(deltaY);
+//  Serial.println();
+  
+  // OK, move to the first point.
+//  Serial.println("moving to the first point.");
+  changeLength(p1a, p1b);
+  
+  
+  // render the line in N shorter segments
+  while (linesegs > 0)
+  {
+//    print_P(PSTR("Line segment "));
+//    Serial.println(linesegs);
+
+    // get current cartesian position again
+    c1x = getCartesianX();
+    c1y = getCartesianY(c1x, accelA.currentPosition());
+    
+    // recalculate remaining delta
+    deltaX = c2x-c1x;    // distance each must move (signed)
+    deltaY = c2y-c1y;
+    
+    deltaXIncrement = deltaX/linesegs;
+    deltaYIncrement = deltaY/linesegs;
+
+    c1x = c1x + deltaXIncrement;        // compute next new location
+    c1y = c1y + deltaYIncrement;
+    
+//    print_P(PSTR("Next cartesian coords: "));
+//    Serial.print(c1x*mmPerStep);
+//    Serial.print(COMMA);
+//    Serial.println(c1y*mmPerStep);
+    
+    // convert back to machine space
+    float pA = getMachineA(c1x, c1y);
+    float pB = getMachineB(c1x, c1y);
+
+//    print_P(PSTR("Next native pos: "));
+//    Serial.print(pA);
+//    Serial.print(COMMA);
+//    Serial.println(pB);
+  
+    changeLength(pA, pB);
+
+    linesegs--;
+  }
+  
+  // do the end point in case theres been some rounding errors etc
+  changeLength(p2a, p2b);
+}
+
+float getMachineA(float cX, float cY)
+{
+  float a = sqrt(sq(cX)+sq(cY));
+  return a;
+}
+float getMachineB(float cX, float cY)
+{
+  float b = sqrt(sq((stepsPerMM*machineWidth)-cX)+sq(cY));
+  return b;
+}
+
+
+
 void drawTestDirectionSquare()
 {
   int rowWidth = asInt(inParam1);
@@ -1346,12 +1514,12 @@ int minSegmentSizeForPen(float penSize)
   if (penSizeInSteps >= 2.0)
     minSegSize = int(penSizeInSteps);
     
-  print_P(PSTR("Min segment size for penSize "));
-  Serial.print(penSize);
-  print_P(PSTR(": "));
-  Serial.print(minSegSize);
-  print_P(PSTR(" steps."));
-  Serial.println();
+//  print_P(PSTR("Min segment size for penSize "));
+//  Serial.print(penSize);
+//  print_P(PSTR(": "));
+//  Serial.print(minSegSize);
+//  print_P(PSTR(" steps."));
+//  Serial.println();
   
   return minSegSize;
 }
@@ -1359,12 +1527,12 @@ int minSegmentSizeForPen(float penSize)
 int maxDensity(float penSize, int rowSize)
 {
   float rowSizeInMM = mmPerStep * rowSize;
-  print_P(PSTR("rowsize in mm: "));
-  Serial.print(rowSizeInMM);
-  print_P(PSTR(", mmPerStep: "));
-  Serial.print(mmPerStep);
-  print_P(PSTR(", rowsize: "));
-  Serial.println(rowSize);
+//  print_P(PSTR("rowsize in mm: "));
+//  Serial.print(rowSizeInMM);
+//  print_P(PSTR(", mmPerStep: "));
+//  Serial.print(mmPerStep);
+//  print_P(PSTR(", rowsize: "));
+//  Serial.println(rowSize);
   
   float numberOfSegments = rowSizeInMM / penSize;
   int maxDens = 1;
@@ -1375,11 +1543,11 @@ int maxDensity(float penSize, int rowSize)
 //  Serial.println(numberOfSegments);
 //
 //    
-  print_P(PSTR("Max density: penSize: "));
-  Serial.print(penSize);
-  print_P(PSTR(", rowSize: "));
-  Serial.print(rowSize);
-  Serial.println(maxDens);
+//  print_P(PSTR("Max density: penSize: "));
+//  Serial.print(penSize);
+//  print_P(PSTR(", rowSize: "));
+//  Serial.print(rowSize);
+//  Serial.println(maxDens);
   
   return maxDens;
 }
@@ -1388,14 +1556,14 @@ int scaleDensity(int inDens, int inMax, int outMax)
 {
   float reducedDens = (float(inDens) / float(inMax)) * float(outMax);
   reducedDens = outMax-reducedDens;
-  print_P(PSTR("inDens:"));
-  Serial.print(inDens);
-  print_P(PSTR(", inMax:"));
-  Serial.print(inMax);
-  print_P(PSTR(", outMax:"));
-  Serial.print(outMax);
-  print_P(PSTR(", reduced:"));
-  Serial.println(reducedDens);
+//  print_P(PSTR("inDens:"));
+//  Serial.print(inDens);
+//  print_P(PSTR(", inMax:"));
+//  Serial.print(inMax);
+//  print_P(PSTR(", outMax:"));
+//  Serial.print(outMax);
+//  print_P(PSTR(", reduced:"));
+//  Serial.println(reducedDens);
   
   // round up if bigger than .5
   int result = int(reducedDens);
@@ -1419,12 +1587,12 @@ void drawSquarePixel(int length, int width, int density, byte drawDirection)
     float totalRemainder = 0.0;
     int lengthSoFar = 0;
     
-    Serial.print("Basic seg length:");
-    Serial.print(basicSegLength);
-    Serial.print(", basic seg remainder:");
-    Serial.print(basicSegRemainder);
-    Serial.print(", remainder per seg");
-    Serial.println(remainderPerSegment);
+//    Serial.print("Basic seg length:");
+//    Serial.print(basicSegLength);
+//    Serial.print(", basic seg remainder:");
+//    Serial.print(basicSegRemainder);
+//    Serial.print(", remainder per seg");
+//    Serial.println(remainderPerSegment);
     
     for (int i = 0; i <= density; i++) 
     {
@@ -1575,6 +1743,15 @@ void reportPosition()
   Serial.print(COMMA);
   Serial.print(accelB.currentPosition());
   Serial.println(CMD_END);
+  
+//  int cX = getCartesianX();
+//  int cY = getCartesianY(cX, accelA.currentPosition());
+//  Serial.print("CARTESIAN,");
+//  Serial.print(cX*mmPerStep);
+//  Serial.print(COMMA);
+//  Serial.print(cY*mmPerStep);
+//  Serial.println(CMD_END);
+//
   outputAvailableMemory();
 }
 
@@ -1607,17 +1784,23 @@ void releaseMotors()
   motorb.release();
 }
 
+int getCartesianX(float aPos, float bPos)
+{
+  int calcX = int((pow(pageWidth, 2) - pow(bPos, 2) + pow(aPos, 2)) / (pageWidth*2));
+  return calcX;  
+}
+
 int getCartesianX() {
-  int calcX = int((pow(pageWidth, 2) - pow(accelB.currentPosition(), 2) + pow(accelA.currentPosition(), 2)) / (pageWidth*2));
+  int calcX = getCartesianX(accelA.currentPosition(), accelB.currentPosition());
   return calcX;  
 }
 
 int getCartesianY() {
-  return getCartesianY(getCartesianX());
+  return getCartesianY(getCartesianX(), accelA.currentPosition());
 }
-int getCartesianY(int cX) {
+int getCartesianY(int cX, float aPos) {
   int calcX = cX;
-  int calcY = int(sqrt(pow(accelA.currentPosition(),2)-pow(calcX,2)));
+  int calcY = int(sqrt(pow(aPos,2)-pow(calcX,2)));
   return calcY;
 }
 
