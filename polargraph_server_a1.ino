@@ -1128,27 +1128,20 @@ void changeLength(int tA, int tB)
   reportPosition();
 }
 
-void changeLength(float tA, float tB)
+void changeLength(double tA, double tB)
 {
-  int intPos = (int)(tA+0.5);
-  accelA.moveTo(intPos);
-  intPos = (int)(tB+0.5);
-  accelB.moveTo(intPos);
+//  int intPos = (int)(tA+0.5);
+//  accelA.moveTo(intPos);
+//  intPos = (int)(tB+0.5);
+//  accelB.moveTo(intPos);
+
+  accelA.moveTo(tA);
+  accelB.moveTo(tB);
   
   while (accelA.distanceToGo() != 0 || accelB.distanceToGo() != 0)
   {
-    if (lastMotorBiasWasA)
-    {
-      accelB.run();
-      accelA.run();
-      lastMotorBiasWasA = false;
-    }
-    else
-    {
-      accelA.run();
-      accelB.run();
-      lastMotorBiasWasA = true;
-    }
+    accelA.run();
+    accelB.run();
   }
   
   reportPosition();
@@ -1198,12 +1191,12 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
   // First, convert these values to cartesian coordinates
   // We're going to figure out how many segments the line
   // needs chopping into.
-  int c1x = getCartesianX(p1a, p1b);
-  int c1y = getCartesianY(c1x, p1a);
+  double c1x = getCartesianXFP(p1a, p1b);
+  double c1y = getCartesianYFP(c1x, p1a);
   
-  int c2x = getCartesianX(p2a, p2b);
-  int c2y = getCartesianY(c2x, p2a);
-  
+  double c2x = getCartesianXFP(p2a, p2b);
+  double c2y = getCartesianYFP(c2x, p2a);
+
   Serial.print(F("Origin cartesian coords: "));
   Serial.print(c1x*mmPerStep);
   Serial.print(COMMA);
@@ -1214,8 +1207,8 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
   Serial.print(COMMA);
   Serial.println(c2y*mmPerStep);
   
-  float deltaX = c2x-c1x;    // distance each must move (signed)
-  float deltaY = c2y-c1y;
+  double deltaX = c2x-c1x;    // distance each must move (signed)
+  double deltaY = c2y-c1y;
 
 //  Serial.print(F("DeltaX and Y: "));
 //  Serial.print(deltaX);
@@ -1248,8 +1241,8 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
 //  Serial.print(F("Line segments "));
 //  Serial.println(linesegs);
    
-  float deltaXIncrement = deltaX/linesegs;
-  float deltaYIncrement = deltaY/linesegs;
+  double deltaXIncrement = deltaX/linesegs;
+  double deltaYIncrement = deltaY/linesegs;
    
 //  Serial.print(F("DeltaX and Y: "));
 //  Serial.print(deltaX);
@@ -1269,8 +1262,8 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
 //    Serial.println(linesegs);
 
     // get current cartesian position again
-    c1x = getCartesianX();
-    c1y = getCartesianY(c1x, accelA.currentPosition());
+    c1x = getCartesianXFP(accelA.currentPosition(), accelB.currentPosition());
+    c1y = getCartesianYFP(c1x, accelA.currentPosition());
     
     // recalculate remaining delta
     deltaX = c2x-c1x;    // distance each must move (signed)
@@ -1299,8 +1292,8 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
 //    Serial.println(c1y*mmPerStep);
     
     // convert back to machine space
-    float pA = getMachineA(c1x, c1y);
-    float pB = getMachineB(c1x, c1y);
+    double pA = getMachineA(c1x, c1y);
+    double pB = getMachineB(c1x, c1y);
 
 //    Serial.print(F("Next native pos: "));
 //    Serial.print(pA);
@@ -1317,12 +1310,12 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
   changeLength(p2a, p2b);
 }
 
-float getMachineA(float cX, float cY)
+double getMachineA(double cX, double cY)
 {
   double a = sqrt(sq(cX)+sq(cY));
   return a;
 }
-float getMachineB(float cX, float cY)
+double getMachineB(double cX, double cY)
 {
   double b = sqrt(sq((pageWidth)-cX)+sq(cY));
   return b;
@@ -1443,63 +1436,63 @@ byte getAutoDrawDirection(long targetA, long targetB, long sourceA, long sourceB
   
   float bearing = atan(hyp/diffA);
   
-  Serial.print("bearing:");
-  Serial.println(bearing);
-  
-  Serial.print(F("TargetA: "));
-  Serial.print(targetA);
-  Serial.print(F(", targetB: "));
-  Serial.print(targetB);
-  Serial.print(F(". SourceA: "));
-  Serial.print(sourceA);
-  Serial.print(F(", sourceB: "));
-  Serial.print(sourceB);
-  Serial.println(F("."));
+//  Serial.print("bearing:");
+//  Serial.println(bearing);
+//  
+//  Serial.print(F("TargetA: "));
+//  Serial.print(targetA);
+//  Serial.print(F(", targetB: "));
+//  Serial.print(targetB);
+//  Serial.print(F(". SourceA: "));
+//  Serial.print(sourceA);
+//  Serial.print(F(", sourceB: "));
+//  Serial.print(sourceB);
+//  Serial.println(F("."));
   
   
   if (targetA<sourceA && targetB<sourceA)
   {
-    Serial.println(F("calculated NW"));
+//    Serial.println(F("calculated NW"));
     dir = DIR_NW;
   }
   else if (targetA>sourceA && targetB>sourceB)
   {
-    Serial.println(F("calculated SE"));
+//    Serial.println(F("calculated SE"));
     dir = DIR_SE;
   }
   else if (targetA<sourceA && targetB>sourceB)
   {
-    Serial.println(F("calculated SW"));
+//    Serial.println(F("calculated SW"));
     dir = DIR_SW;
   }
   else if (targetA>sourceA && targetB<sourceB)
   {
-    Serial.println(F("calculated NE"));
+//    Serial.println(F("calculated NE"));
     dir = DIR_NE;
   }
   else if (targetA==sourceA && targetB<sourceB)
   {
-    Serial.println(F("calc NE"));
+//    Serial.println(F("calc NE"));
     dir = DIR_NE;
   }
   else if (targetA==sourceA && targetB>sourceB)
   {
-    Serial.println(F("calc SW"));
+//    Serial.println(F("calc SW"));
     dir = DIR_SW;
   }
   else if (targetA<sourceA && targetB==sourceB)
   {
-    Serial.println(F("calc NW"));
+//    Serial.println(F("calc NW"));
     dir = DIR_NW;
   }
   else if (targetA>sourceA && targetB==sourceB)
   {
-    Serial.println(F("calc SE"));
+//    Serial.println(F("calc SE"));
     dir = DIR_SE;
   }
   else
   {
-    Serial.println("Not calculated - default SE");
+//    Serial.println("Not calculated - default SE");
   }
 
   return dir;
@@ -1784,13 +1777,13 @@ void reportPosition()
   Serial.print(accelB.currentPosition());
   Serial.println(CMD_END);
   
-  int cX = getCartesianX();
-  int cY = getCartesianY(cX, accelA.currentPosition());
-  Serial.print(OUT_CMD_CARTESIAN);
-  Serial.print(cX*mmPerStep);
-  Serial.print(COMMA);
-  Serial.print(cY*mmPerStep);
-  Serial.println(CMD_END);
+//  int cX = getCartesianX();
+//  int cY = getCartesianY(cX, accelA.currentPosition());
+//  Serial.print(OUT_CMD_CARTESIAN);
+//  Serial.print(cX*mmPerStep);
+//  Serial.print(COMMA);
+//  Serial.print(cY*mmPerStep);
+//  Serial.println(CMD_END);
 //
   outputAvailableMemory();
 }
@@ -1823,6 +1816,18 @@ void releaseMotors()
   motora.release();
   motorb.release();
 }
+
+double getCartesianXFP(double aPos, double bPos)
+{
+  double calcX = (pow(pageWidth, 2) - pow(bPos, 2) + pow(aPos, 2)) / (pageWidth*2);
+  return calcX;  
+}
+double getCartesianYFP(double cX, double aPos) 
+{
+  double calcY = sqrt(pow(aPos,2)-pow(cX,2));
+  return calcY;
+}
+
 
 int getCartesianX(float aPos, float bPos)
 {
