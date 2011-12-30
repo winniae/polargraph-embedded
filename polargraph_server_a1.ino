@@ -998,20 +998,19 @@ void changeLengthDirect()
   drawBetweenPoints(startA, startB, endA, endB, maxLength);
 }  
 
+/**
+Thanks to Andy Kinsman for help with this method.
+
+This moves the gondola in a straight line between p1 and p2.  Both input coordinates are in 
+the native coordinates system.  
+
+The fidelity of the line is controlled by maxLength - this is the longest size a line segment is 
+allowed to be.  1 is finest, slowest.  Use higher values for faster, wobblier.
+*/
 void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength)
 {
   // ok, we're going to plot some dots between p1 and p2.  Using maths. I know! Brave new world etc.
   
-//  Serial.print(F("Current native pos: "));
-//  Serial.print(p1a);
-//  Serial.print(COMMA);
-//  Serial.println(p1b);
-//  
-//  Serial.print(F("Target native pos: "));
-//  Serial.print(p2a);
-//  Serial.print(COMMA);
-//  Serial.println(p2b);
-
   // First, convert these values to cartesian coordinates
   // We're going to figure out how many segments the line
   // needs chopping into.
@@ -1021,32 +1020,14 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
   double c2x = getCartesianXFP(p2a, p2b);
   double c2y = getCartesianYFP(c2x, p2a);
 
-//  Serial.print(F("Origin cartesian coords: "));
-//  Serial.print(c1x*mmPerStep);
-//  Serial.print(COMMA);
-//  Serial.println(c1y*mmPerStep);
-//
-//  Serial.print(F("Target cartesian coords: "));
-//  Serial.print(c2x*mmPerStep);
-//  Serial.print(COMMA);
-//  Serial.println(c2y*mmPerStep);
-  
   double deltaX = c2x-c1x;    // distance each must move (signed)
   double deltaY = c2y-c1y;
 
-//  Serial.print(F("DeltaX and Y: "));
-//  Serial.print(deltaX);
-//  Serial.print(COMMA);
-//  Serial.print(deltaY);
-//  Serial.println();
-//
-  int xy_incmax = maxLength;  // smallest chop in step counts? configurable?
-//   
   int linesegs = 1;            // assume at least 1 line segment will get us there.
   if (abs(deltaX) > abs(deltaY))
   {
     // slope <=1 case    
-    while ((abs(deltaX)/linesegs) > xy_incmax)
+    while ((abs(deltaX)/linesegs) > maxLength)
     {
       linesegs++;
     }
@@ -1054,82 +1035,34 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
   else
   {
     // slope >1 case
-    while ((abs(deltaY)/linesegs) > xy_incmax)
+    while ((abs(deltaY)/linesegs) > maxLength)
     {
       linesegs++;
     }
   }
   
-//  linesegs -= 1;
+  // reduce delta to one line segments' worth.
+  deltaX = deltaX/linesegs;
+  deltaY = deltaY/linesegs;
 
-//  Serial.print(F("Line segments "));
-//  Serial.println(linesegs);
-   
-  double deltaXIncrement = deltaX/linesegs;
-  double deltaYIncrement = deltaY/linesegs;
-   
-//  Serial.print(F("DeltaX and Y: "));
-//  Serial.print(deltaX);
-//  Serial.print(COMMA);
-//  Serial.print(deltaY);
-//  Serial.println();
-  
-  // OK, move to the first point.
-//  Serial.println("moving to the first point.");
-  changeLength(p1a, p1b);
-  
-  
   // render the line in N shorter segments
   while (linesegs > 0)
   {
-//    Serial.print(F("Line segment "));
-//    Serial.println(linesegs);
+    // compute next new location
+    c1x = c1x + deltaX;
+    c1y = c1y + deltaY;
 
-    // get current cartesian position again
-//    c1x = getCartesianXFP(accelA.currentPosition(), accelB.currentPosition());
-//    c1y = getCartesianYFP(c1x, accelA.currentPosition());
-    
-    // recalculate remaining delta
-//    deltaX = c2x-c1x;    // distance each must move (signed)
-//    deltaY = c2y-c1y;
-//
-////    Serial.print(F("DeltaX:"));
-////    Serial.println(deltaX);
-////    Serial.print(F("DeltaY:"));
-////    Serial.println(deltaY);
-//    
-//    deltaXIncrement = deltaX/linesegs;
-//    deltaYIncrement = deltaY/linesegs;
-    
-
-//    Serial.print(F("DeltaXInc:"));
-//    Serial.println(deltaXIncrement);
-//    Serial.print(F("DeltaYInc:"));
-//    Serial.println(deltaYIncrement);
-
-    c1x = c1x + deltaXIncrement;        // compute next new location
-    c1y = c1y + deltaYIncrement;
-    
-//    Serial.print(F("Next cartesian coords: "));
-//    Serial.print(c1x*mmPerStep);
-//    Serial.print(COMMA);
-//    Serial.println(c1y*mmPerStep);
-    
     // convert back to machine space
     double pA = getMachineA(c1x, c1y);
     double pB = getMachineB(c1x, c1y);
-
-//    Serial.print(F("Next native pos: "));
-//    Serial.print(pA);
-//    Serial.print(COMMA);
-//    Serial.println(pB);
   
+    // do the move
     changeLength(pA, pB);
 
+    // one line less to do!
     linesegs--;
   }
   
-//  delay(1000);
   // do the end point in case theres been some rounding errors etc
   changeLength(p2a, p2b);
 }
