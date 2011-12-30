@@ -1,7 +1,6 @@
 //#include <AFMotorSPI.h>
 #include <AFMotor.h>
 #include <AccelStepper.h>
-#include <avr/pgmspace.h>
 #include <Servo.h>
 #include <EEPROM.h>
 
@@ -149,39 +148,17 @@ const static String CMD_TESTPENWIDTHSQUARE = "C11";
 const static String CMD_TESTPENWIDTHSCRIBBLE = "C12";
 const static String CMD_PENDOWN = "C13";
 const static String CMD_PENUP = "C14";
-
 const static String CMD_CHANGELENGTHDIRECT = "C17";
-const static String CMD_LOADMAGEFILE = "C23";
-
-const static String CMD_STARTROVE = "C19";
-const static String CMD_STOPROVE = "C20";
-const static String CMD_SETROVEAREA = "C21";
-
 const static String CMD_SETMACHINESIZE = "C24";
 const static String CMD_SETMACHINENAME = "C25";
 const static String CMD_GETMACHINEDETAILS = "C26";
 const static String CMD_RESETEEPROM = "C27";
 const static String CMD_DRAWDIRECTIONTEST = "C28";
-
 const static String CMD_SETMACHINEMMPERREV = "C29";
 const static String CMD_SETMACHINESTEPSPERREV = "C30";
-
 const static String CMD_SETMOTORSPEED = "C31";
 const static String CMD_SETMOTORACCEL = "C32";
-
-
 const static String CMD_END = ",END";
-
-struct ImageIndex {
-  String imageName;
-  long firstImageBlock;
-  int headerOffset;
-  int width;
-  int height;
-};
-
-static ImageIndex currentImageIndex;
-
 
 void setup() 
 {
@@ -419,55 +396,8 @@ void loop()
     lastCommandConfirmed = false;
     ready();
   }
-//  ready();
 }
 
-//void rove()
-//{
-//  if (roving)
-//  {
-//    if (accelA.distanceToGo() != 0)
-//    {
-//      accelA.run();
-//    }
-//    else
-//    {
-//      // choose new position for accelA to head to
-//      int rand = random(roveMinA, roveMaxA);
-//      accelA.moveTo(rand);
-//    }
-//
-//    if (accelB.distanceToGo() != 0)
-//    {
-//      accelB.run();
-//    }
-//    else
-//    {
-//      // choose new position for accelA to head to
-//      int rand = random(roveMinB, roveMaxB);
-//      accelB.moveTo(rand);
-//    }
-//    
-//    byte brightness = getPixelBrightness(accelA.currentPosition(), accelB.currentPosition());
-//    
-//  }
-//}
-
-//byte getPixelBrightness(float aPos, float bPos)
-//{
-//  if (isImageLoaded())
-//  {
-//    // work out cartesian coordinates
-//    int cX = getCartesianX() / stepsPerMM;
-//    int cY = getCartesianY(cX) / stepsPerMM;
-//    Serial.print("x:");
-//    Serial.print(cX);
-//    Serial.print(",y:");
-//    Serial.println(cY);
-//  }
-//  else
-//    return 255;
-//}
 
 void requestResend()
 {
@@ -555,22 +485,6 @@ void executeCommand(String inS)
   {
     penUp();
   }
-//  else if (inS.startsWith(CMD_LOADMAGEFILE))
-//  {
-//    findImageFile();
-//  }
-//  else if (inS.startsWith(CMD_STARTROVE))
-//  {
-//    startRoving();
-//  }
-//  else if (inS.startsWith(CMD_STOPROVE))
-//  {
-//    stopRoving();
-//  }
-//  else if (inS.startsWith(CMD_SETROVEAREA))
-//  {
-//    setRoveArea();
-//  }
   else if (inS.startsWith(CMD_SETMACHINESIZE))
   {
     setMachineSizeFromCommand();
@@ -762,96 +676,6 @@ void setMachineStepsPerRevFromCommand()
   EEPROMWriteInt(EEPROM_MACHINE_STEPS_PER_REV, stepsPerRev);
   loadMachineSpecFromEeprom();
 }
-
-//void startRoving()
-//{
-//  if (isRoveAreaSet())
-//  {
-//    Serial.print(F("Started roving."));
-//    accelA.moveTo(roveMinA);
-//    accelB.moveTo(roveMinB);
-//    while (accelA.distanceToGo() != 0 && accelB.distanceToGo() != 0)
-//    {
-//      accelA.run();
-//      accelB.run();
-//      reportPosition();
-//    }
-//    roving = true;
-//    delay(2000);
-//  }
-//}
-//void stopRoving()
-//{
-//  roving = false;
-//  Serial.print(F("Stopped roving."));
-//  outputAvailableMemory();
-//}
-//
-//void setRoveArea()
-//{
-//  roveMinA = asInt(inParam1);
-//  roveMinB = asInt(inParam2);
-//  roveMaxA = asInt(inParam3);
-//  roveMaxB = asInt(inParam4);
-//  if (isRoveAreaSet())
-//  {
-//    Serial.print(F("Rove area set: "));
-//    Serial.print(roveMaxA);
-//    Serial.print(F(", "));
-//    Serial.print(roveMinA);
-//    Serial.print(F(", "));
-//    Serial.print(roveMaxB);
-//    Serial.print(F(", "));
-//    Serial.println(roveMinB);
-//  }
-//}
-//
-//boolean isRoveAreaSet()
-//{
-//  if (roveMaxA == 0 
-//  || roveMinA == 0
-//  || roveMaxB == 0
-//  || roveMinB == 0)
-//    return false;
-//  else
-//    return true;
-//}
-//
-//boolean isImageLoaded()
-//{
-//  if (currentImageIndex.firstImageBlock < 0)
-//    return false;
-//  else
-//    return true;
-//}
-
-//void findImageFile()
-//{
-//  /*
-//    file index commands looks like
-//    C23, (4)
-//    filename________ (8)
-//    ,END
-//  */
-//  String filename = inParam1;
-//  Serial.println(filename);
-//  
-//  initSD();
-//  boolean imageFound = findPolargraphImage(filename);
-//  Serial.print(F("Image called "));
-//  Serial.print(filename);
-//  if (imageFound)
-//  {
-//    Serial.print(F(" was found in block "));
-//    Serial.println(currentImageIndex.firstImageBlock);
-//  }
-//  else
-//  {
-//    Serial.print(F(" could not be found on the card."));
-//    Serial.println();
-//    currentImageIndex.firstImageBlock = -1;
-//  }
-//}
 
 void setMotorSpeed()
 {
@@ -1169,7 +993,7 @@ void changeLengthDirect()
 
   float startA = accelA.currentPosition();
   float startB = accelB.currentPosition();
-  Serial.println(F("Drawing direct line"));
+//  Serial.println(F("Drawing direct line"));
   
   drawBetweenPoints(startA, startB, endA, endB, maxLength);
 }  
@@ -1197,15 +1021,15 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
   double c2x = getCartesianXFP(p2a, p2b);
   double c2y = getCartesianYFP(c2x, p2a);
 
-  Serial.print(F("Origin cartesian coords: "));
-  Serial.print(c1x*mmPerStep);
-  Serial.print(COMMA);
-  Serial.println(c1y*mmPerStep);
-
-  Serial.print(F("Target cartesian coords: "));
-  Serial.print(c2x*mmPerStep);
-  Serial.print(COMMA);
-  Serial.println(c2y*mmPerStep);
+//  Serial.print(F("Origin cartesian coords: "));
+//  Serial.print(c1x*mmPerStep);
+//  Serial.print(COMMA);
+//  Serial.println(c1y*mmPerStep);
+//
+//  Serial.print(F("Target cartesian coords: "));
+//  Serial.print(c2x*mmPerStep);
+//  Serial.print(COMMA);
+//  Serial.println(c2y*mmPerStep);
   
   double deltaX = c2x-c1x;    // distance each must move (signed)
   double deltaY = c2y-c1y;
@@ -1262,20 +1086,20 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
 //    Serial.println(linesegs);
 
     // get current cartesian position again
-    c1x = getCartesianXFP(accelA.currentPosition(), accelB.currentPosition());
-    c1y = getCartesianYFP(c1x, accelA.currentPosition());
+//    c1x = getCartesianXFP(accelA.currentPosition(), accelB.currentPosition());
+//    c1y = getCartesianYFP(c1x, accelA.currentPosition());
     
     // recalculate remaining delta
-    deltaX = c2x-c1x;    // distance each must move (signed)
-    deltaY = c2y-c1y;
-
-//    Serial.print(F("DeltaX:"));
-//    Serial.println(deltaX);
-//    Serial.print(F("DeltaY:"));
-//    Serial.println(deltaY);
-    
-    deltaXIncrement = deltaX/linesegs;
-    deltaYIncrement = deltaY/linesegs;
+//    deltaX = c2x-c1x;    // distance each must move (signed)
+//    deltaY = c2y-c1y;
+//
+////    Serial.print(F("DeltaX:"));
+////    Serial.println(deltaX);
+////    Serial.print(F("DeltaY:"));
+////    Serial.println(deltaY);
+//    
+//    deltaXIncrement = deltaX/linesegs;
+//    deltaYIncrement = deltaY/linesegs;
     
 
 //    Serial.print(F("DeltaXInc:"));
@@ -1364,7 +1188,7 @@ void drawSquarePixel()
 
     if (globalDrawDirection == DIR_SE) 
     {
-      Serial.println(F("d: SE"));
+//      Serial.println(F("d: SE"));
       startPointA = originA - halfSize;
       startPointA += offsetStart;
       startPointB = originB;
@@ -1373,7 +1197,7 @@ void drawSquarePixel()
     }
     else if (globalDrawDirection == DIR_SW)
     {
-      Serial.println(F("d: SW"));
+//      Serial.println(F("d: SW"));
       startPointA = originA;
       startPointB = originB - halfSize;
       startPointB += offsetStart;
@@ -1382,7 +1206,7 @@ void drawSquarePixel()
     }
     else if (globalDrawDirection == DIR_NW)
     {
-      Serial.println(F("d: NW"));
+//      Serial.println(F("d: NW"));
       startPointA = originA + halfSize;
       startPointA -= offsetStart;
       startPointB = originB;
@@ -1391,7 +1215,7 @@ void drawSquarePixel()
     }
     else //(drawDirection == DIR_NE)
     {
-      Serial.println(F("d: NE"));
+//      Serial.println(F("d: NE"));
       startPointA = originA;
       startPointB = originB + halfSize;
       startPointB -= offsetStart;
@@ -1400,15 +1224,15 @@ void drawSquarePixel()
     }
 
     density = scaleDensity(density, 255, maxDensity(penWidth, size));
-    Serial.print(F("Start point: "));
-    Serial.print(startPointA);
-    Serial.print(COMMA);
-    Serial.print(startPointB);
-    Serial.print(F(". end point: "));
-    Serial.print(endPointA);
-    Serial.print(COMMA);
-    Serial.print(endPointB);
-    Serial.println(F("."));
+//    Serial.print(F("Start point: "));
+//    Serial.print(startPointA);
+//    Serial.print(COMMA);
+//    Serial.print(startPointB);
+//    Serial.print(F(". end point: "));
+//    Serial.print(endPointA);
+//    Serial.print(COMMA);
+//    Serial.print(endPointB);
+//    Serial.println(F("."));
     
     changeLength(startPointA, startPointB);
     if (density > 1)
@@ -1893,417 +1717,5 @@ unsigned int EEPROMReadInt(int p_address)
   byte highByte = EEPROM.read(p_address + 1);
   return ((lowByte << 0) & 0xFF) + ((highByte << 8) & 0xFF00);
 }
-
-//
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///********************   FILE STUFF   *************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-///*************************************************************************************************/
-//
-//// Ports
-//int PIN_CS = PINB2;      // chip select
-//int PIN_MOSI = PINB3;    // master out slave in
-//int PIN_MISO = PINB4;    // master in slave out
-//int PIN_CLOCK = PINB5;   // clock
-//
-///********************** SPI SECTION BELOW **********************/
-//
-//// SPI Variables
-//byte clr;     // dummy variable used to clear some of the SPI registers
-//byte spi_err; // SPI timeout flag, must be cleared manually
-//
-//// send an SPI command, includes time out management
-//// returns spi_err: "0" is "no error"
-//byte spi_cmd(volatile char data) {
-////  Serial.print(F("spicmd:"));
-////  Serial.println(data, HEX);
-//  
-//  spi_err = 0; // reset spi error
-//  SPDR = data; // start the transmission by loading the output byte into the spi data register
-//  int i = 0;
-//  while (!(SPSR & (1<<SPIF))) {
-//    i++;
-//    if (i >= 0xFF) {
-//      spi_err = 1;
-//      return(0x00);
-//    }
-//  }
-//  // returned value
-//  return(SPDR); 
-//}
-//
-//// initialize SPI port 
-//void spi_initialize(void) {
-//  SPCR = (1<<SPE) | (1<<MSTR); // spi enabled, master mode
-//  clr = SPSR; // dummy read registers to clear previous results
-//  clr = SPDR;
-//}
-//
-///********************** SD CARD SECTION BELOW **********************/
-//
-//// SD Card variables
-//const int blockSize = 512;          // block size (default 512 bytes)
-//byte vBlock[blockSize];        // set vector containing data that will be recorded on SD Card
-//byte vBuffer[16];
-//
-//#define GO_IDLE_STATE 0x00     // resets the SD card
-//#define SEND_CSD 0x09          // sends card-specific data
-//#define SEND_CID 0x0A          // sends card identification 
-//const int READ_SINGLE_BLOCK = 0x11; // reads a block at byte address 
-//#define WRITE_BLOCK 0x18       // writes a block at byte address
-//#define SEND_OP_COND 0x29      // starts card initialization
-//#define APP_CMD 0x37           // prefix for application command 
-//
-//
-//// Send a SD command, num is the actual index, NOT OR'ed with 0x40. 
-//// arg is all four bytes of the argument
-//byte sdc_cmd(byte commandIndex, long arg) {
-////  Serial.print(commandIndex, HEX);
-////  Serial.print(", arg:");
-////  Serial.println(arg);
-//  PORTB &= ~(1<<PIN_CS);   // assert chip select for the card
-//  spi_cmd(0xFF);           // dummy byte
-//  commandIndex |= 0x40;    // command token OR'ed with 0x40 
-//  spi_cmd(commandIndex);   // send command
-//  for (int i=3; i>=0; i--) {
-//    spi_cmd(arg>>(i*8));   // send argument in little endian form (MSB first)
-//  }
-//  spi_cmd(0x95);           // checksum valid for GO_IDLE_STATE, not needed thereafter, so we can hardcode this value
-//  spi_cmd(0xFF);           // dummy byte gives card time to process
-//  byte res = spi_cmd(0xFF);
-////  Serial.print(F("result in sdc:"));
-////  Serial.print(res, DEC);
-//  return (res);  // query return value from card
-//}
-//
-//// initialize SD card 
-//// retuns 1 if successful
-//byte sdc_initialize(void) {
-//  // set slow clock: 1/128 base frequency (125Khz in this case)
-//  SPCR |=  (1<<SPR1) | (1<<SPR0); // set slow clock: 1/128 base frequency (125Khz in this case)
-//  SPSR &= ~(1<<SPI2X);            // No doubled clock frequency
-//  // wake up SD card
-//  PORTB |=  (1<<PIN_CS);          // deasserts card for warmup
-//  PORTB |=  (1<<PIN_MOSI);        // set MOSI high
-//  for(byte i=0; i<10; i++) {
-//    spi_cmd(0xFF);                // send 10 times 8 pulses for a warmup (74 minimum)
-//  }
-//  // set idle mode
-//  byte retries=0;
-//  PORTB &= ~(1<<PIN_CS);          // assert chip select for the card
-//  while(sdc_cmd(GO_IDLE_STATE, 0) != 0x01) { // while SD card is not in iddle state
-//    retries++;
-//    if (retries >= 0xFF) {
-//      return(NULL); // timed out!
-//    }
-//    delay(5);
-//  }
-//  // at this stage, the card is in idle mode and ready for start up
-//  retries = 0;
-//  sdc_cmd(APP_CMD, 0); // startup sequence for SD cards 55/41
-//  while (sdc_cmd(SEND_OP_COND, 0) != 0x00) {
-//    retries++;
-//    if (retries >= 0xFF) {
-//      return(NULL); // timed out!
-//    }
-//    sdc_cmd(APP_CMD, 0); 
-//  }
-//  // set fast clock, 1/4 CPU clock frequency (4Mhz in this case)
-//  SPCR &= ~((1<<SPR1) | (1<<SPR0)); // Clock Frequency: f_OSC / 4 
-//  SPSR |=  (1<<SPI2X);              // Doubled Clock Frequency: f_OSC / 2 
-//  return (0x01); // returned value (success)
-//}
-//
-//// clear block content
-//void sdc_clearVector(void) {
-//  for (int i=0; i<blockSize; i++) {
-//    vBlock[i] = 0;
-//  }
-//}
-//
-//void dumpVector()
-//{
-//  Serial.print(F("Chars"));
-//  Serial.println();
-//  for (int i = 0; i < blockSize; i++)
-//  {
-//    Serial.print(vBlock[i]);
-//    Serial.print(" ");
-//    if ((i+1) % 32 == 0)
-//      Serial.println();
-//  }
-//  Serial.print(F("Decimals"));
-//  Serial.println();
-//  for (int i = 0; i < blockSize; i++)
-//  {
-//    Serial.print(vBlock[i], DEC);
-//    Serial.print(" ");
-//    if ((i+1) % 16 == 0)
-//      Serial.println();
-//  }
-//}
-//
-//// get nbr of blocks on SD memory card from
-//long sdc_totalNbrBlocks(void) {
-//  sdc_readRegister(SEND_CSD);
-//  // compute size
-//  long C_Size = ((vBuffer[0x08] & 0xC0) >> 6) | ((vBuffer[0x07] & 0xFF) << 2) | ((vBuffer[0x06] & 0x03) << 10);
-//  long C_Mult = ((vBuffer[0x08] & 0x80) >> 7) | ((vBuffer[0x08] & 0x03) << 2);
-//  return ((C_Size+1) << (C_Mult+2)); 
-//}
-//
-//// read SD card register content and store it in vBuffer
-//void sdc_readRegister(byte sentCommand) {
-//  byte retries=0x00;
-//  byte res=sdc_cmd(sentCommand, 0); 
-//  while(res != 0x00) { 
-//    delay(1);
-//    retries++;
-//    if (retries >= 0xFF) return; // timed out!
-//    res=spi_cmd(0xFF); // retry
-//  }  
-//  // wait for data token
-//  while (spi_cmd(0xFF) != 0xFE); 
-//  // read data
-//  for (int i=0; i<16; i++) {
-//    vBuffer[i] = spi_cmd(0xFF);
-//  }
-//  // read CRC (lost results in blue sky)
-//  spi_cmd(0xFF); // LSB
-//  spi_cmd(0xFF); // MSB
-//}
-//
-//// write block on SD card 
-//// addr is the address in bytes (multiples of block size)
-//void sdc_writeBlock(long blockIndex) {
-//  byte retries=0;
-//  while(sdc_cmd(WRITE_BLOCK, blockIndex * blockSize) != 0x00) { 
-//    delay(1);
-//    retries++;
-//    if (retries >= 0xFF) return; // timed out!
-//  }
-//  spi_cmd(0xFF); // dummy byte (at least one)
-//  // send data packet (includes data token, data block and CRC)
-//  // data token
-//  spi_cmd(0xFE);
-//  // copy block data
-//  for (int i=0; i<blockSize; i++) {
-//    spi_cmd(vBlock[i]); 
-//  }
-//  // write CRC (lost results in blue sky)
-//  spi_cmd(0xFF); // LSB
-//  spi_cmd(0xFF); // MSB
-//  // wait until write is finished
-//  while (spi_cmd(0xFF) != 0xFF) delay(1); // kind of NOP
-//}
-//
-//// read block on SD card and copy data in block vector
-//// retuns 1 if successful
-//void sdc_readBlock(long blockIndex) {
-//  byte retries = 0x00;
-//  byte res = sdc_cmd(READ_SINGLE_BLOCK,  (blockIndex * blockSize));
-////  Serial.println(res);
-//  while(res != 0x00) { 
-//    delay(1);
-//    retries++;
-//    if (retries >= 0xFF) return; // timed out!
-//    res=spi_cmd(0xFF); // retry
-//  }
-//  // read data packet (includes data token, data block and CRC)
-//  // read data token
-//  while (spi_cmd(0xFF) != 0xFE); 
-//  // read data block
-//  for (int i=0; i<blockSize; i++) {
-////    Serial.print("i:");
-////    Serial.print(i);
-//    vBlock[i] = spi_cmd(0xFF); // read data
-//  }
-//  // read CRC (lost results in blue sky)
-//  spi_cmd(0xFF); // LSB
-//  spi_cmd(0xFF); // MSB
-//}
-//
-//long getLongFromVector(long addr)
-//{
-//  // start address
-//  byte inBuf[4];
-//  for (int i = addr; i < addr+4; i++)
-//  {
-//    inBuf[i-addr] = vBlock[i];
-//  }
-//  long result = ((long)inBuf[0]) << 24;
-//  result |= ((long)inBuf[1]) << 16;
-//  result |= ((long)inBuf[2]) << 8;
-//  result |= inBuf[3];
-//  
-//  return result;
-//}
-//
-///********************** MAIN ROUTINES SECTION  BELOW **********************/
-//
-//void initSD()
-//{
-//  // Set ports
-//  // Data in
-//  DDRB &= ~(1<<PIN_MISO);
-//  // Data out
-//  DDRB |=  (1<<PIN_CLOCK);
-//  DDRB |=  (1<<PIN_CS);
-//  DDRB |=  (1<<PIN_MOSI);  
-//  // Initialize SPI and SDC 
-//  spi_err=0;        // reset SPI error
-//  spi_initialize(); // initialize SPI port
-//  sdc_initialize(); // Initialize SD Card
-//  Serial.println();
-//  Serial.print(sdc_totalNbrBlocks(), DEC);
-//  Serial.print(F(" blocks"));
-//  Serial.println();
-//  
-//}
-//
-//boolean findPolargraphImage(String imageName)
-//{
-//  boolean fileFound = false;
-//  Serial.print(F("Listing files:"));
-//  Serial.println();
-//  long totalBlocks = sdc_totalNbrBlocks();
-//  Serial.println(totalBlocks);
-//  for (int i = 0; i < totalBlocks; i++)
-//  {
-//    // get the block
-//    outputAvailableMemory();
-//    if (blockIsImage(i))
-//    {
-//      Serial.print(F("Block is image!"));
-//      Serial.println();
-//      char* text_cstr = "                ";
-//      imageName.toCharArray(text_cstr, 17);
-//      if (blockIsImageName(text_cstr))
-//      {
-//        Serial.print(imageName);
-//        Serial.print(F(" found. Block "));
-//        Serial.println(i);
-//        currentImageIndex.imageName=imageName;
-//        currentImageIndex.firstImageBlock = i;
-//        currentImageIndex.headerOffset = 64;
-//        currentImageIndex.width = getImageWidthFromBlock();
-//        currentImageIndex.height = getImageHeightFromBlock();
-//        fileFound = true;
-//        break;
-//      }
-//      else
-//      {
-//        Serial.print(F("not matched."));
-//      }
-//    }
-//  }
-//}
-//
-//int getImageWidthFromBlock()
-//{
-//  // get eigtht bytes to find the width
-//  char* text_cstr = "00000000";
-//  for (byte i = 48; i < 56; i++)
-//  {
-//    text_cstr[i-48] = vBlock[i];
-//  }
-//  
-//  int widthInt = atoi(text_cstr);
-//  Serial.print("width:");
-//  Serial.println(widthInt);
-//  return widthInt;
-//}
-//
-//int getImageHeightFromBlock()
-//{
-//}
-//
-//boolean blockIsImage(long block)
-//{
-//  sdc_readBlock(block);
-//  if (vBlock[0] == 'P' 
-//    && vBlock[1] == 'O'
-//    && vBlock[2] == 'L'
-//    && vBlock[3] == 'A'
-//    && vBlock[4] == 'R'
-//    && vBlock[5] == 'G'
-//    && vBlock[6] == 'R'
-//    && vBlock[7] == 'A'
-//    && vBlock[8] == 'P'
-//    && vBlock[9] == 'H'
-//    && vBlock[10] == '_'
-//    && vBlock[11] == 'I'
-//    && vBlock[12] == 'M'
-//    && vBlock[13] == 'A'
-//    && vBlock[14] == 'G'
-//    && vBlock[15] == 'E'
-//    )
-//  {
-//    // is an image, great
-//    for (int i = 0; i < 64; i++)
-//    {
-//      Serial.print(vBlock[i]);
-//    }
-//    Serial.println();
-//    return true;
-//  }
-//  else
-//    return false;
-//}
-//
-//boolean blockIsImageName(char imgName[17])
-//{
-//  if (vBlock[32] == imgName[0] 
-//    && vBlock[33] == imgName[1]
-//    && vBlock[34] == imgName[2]
-//    && vBlock[35] == imgName[3]
-//    && vBlock[36] == imgName[4]
-//    && vBlock[37] == imgName[5]
-//    && vBlock[38] == imgName[6]
-//    && vBlock[39] == imgName[7]
-//    && vBlock[40] == imgName[8]
-//    && vBlock[41] == imgName[9]
-//    && vBlock[42] == imgName[10]
-//    && vBlock[43] == imgName[11]
-//    && vBlock[44] == imgName[12]
-//    && vBlock[45] == imgName[13]
-//    && vBlock[46] == imgName[14]
-//    && vBlock[47] == imgName[15]
-//    )
-//  {
-//    // is an image, great
-//    return true;
-//  }
-//  else
-//  {
-//    return false;
-//  }
-//}
 
 
