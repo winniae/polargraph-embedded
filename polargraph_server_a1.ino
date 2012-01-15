@@ -40,8 +40,8 @@ AF_Stepper motorb(motorStepsPerRev, 2);
 
 int startLengthMM = 800;
 
-double mmPerStep = mmPerRev / motorStepsPerRev;
-double stepsPerMM = motorStepsPerRev / mmPerRev;
+float mmPerStep = mmPerRev / motorStepsPerRev;
+float stepsPerMM = motorStepsPerRev / mmPerRev;
 
 int pageWidth = machineWidth * stepsPerMM;
 
@@ -57,6 +57,9 @@ int availMem = 0;
 static float penWidth = 0.8; // line width in mm
 
 const int stepType = INTERLEAVE;
+
+boolean reportingPosition = true;
+boolean acceleration = true;
 
 void forwarda() {  
   motora.onestep(FORWARD, stepType);
@@ -927,6 +930,71 @@ void changeDrawingDirection()
     
   }
 
+//float rads(int n) {
+//  // Return an angle in radians
+//  return (n/180.0 * PI);
+//}    
+//
+//void drawCurve(float x, float y, float fx, float fy, float cx, float cy) {
+//  // Draw a Quadratic Bezier curve from (x, y) to (fx, fy) using control pt
+//  // (cx, cy)
+//  float xt=0;
+//  float yt=0;
+//
+//  for (float t=0; t<=1; t+=.0025) {
+//    xt = pow((1-t),2) *x + 2*t*(1-t)*cx+ pow(t,2)*fx;
+//    yt = pow((1-t),2) *y + 2*t*(1-t)*cy+ pow(t,2)*fy;
+//    changeLength(xt, yt);
+//  }  
+//}
+//                                                     
+//
+//void drawCircle(int centerx, int centery, int radius) {
+//  // Estimate a circle using 20 arc Bezier curve segments
+//  int segments =20;
+//  int angle1 = 0;
+//  int midpoint=0;
+//   
+//   changeLength(centerx+radius, centery);
+//
+//  for (float angle2=360/segments; angle2<=360; angle2+=360/segments) {
+//
+//    midpoint = angle1+(angle2-angle1)/2;
+//
+//    float startx=centerx+radius*cos(rads(angle1));
+//    float starty=centery+radius*sin(rads(angle1));
+//    float endx=centerx+radius*cos(rads(angle2));
+//    float endy=centery+radius*sin(rads(angle2));
+//    
+//    int t1 = rads(angle1)*1000 ;
+//    int t2 = rads(angle2)*1000;
+//    int t3 = angle1;
+//    int t4 = angle2;
+//
+//    drawCurve(startx,starty,endx,endy,
+//              centerx+2*(radius*cos(rads(midpoint))-.25*(radius*cos(rads(angle1)))-.25*(radius*cos(rads(angle2)))),
+//              centery+2*(radius*sin(rads(midpoint))-.25*(radius*sin(rads(angle1)))-.25*(radius*sin(rads(angle2))))
+//    );
+//    
+//    angle1=angle2;
+//  }
+//
+//}
+//
+//
+//              
+//void drawCircles(int number, int centerx, int centery, int r) {
+//   // Draw a certain number of concentric circles at the given center with
+//   // radius r
+//   int dr=0;
+//   if (number > 0) {
+//     dr = r/number;
+//     for (int k=0; k<number; k++) {
+//       drawCircle(centerx, centery, r);
+//       r=r-dr;
+//     }
+//   }
+//}
 
 
 
@@ -952,7 +1020,7 @@ void changeLength(int tA, int tB)
   reportPosition();
 }
 
-void changeLength(double tA, double tB)
+void changeLength(float tA, float tB)
 {
 //  int intPos = (int)(tA+0.5);
 //  accelA.moveTo(intPos);
@@ -1011,17 +1079,19 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
 {
   // ok, we're going to plot some dots between p1 and p2.  Using maths. I know! Brave new world etc.
   
+  reportingPosition = false;
+  
   // First, convert these values to cartesian coordinates
   // We're going to figure out how many segments the line
   // needs chopping into.
-  double c1x = getCartesianXFP(p1a, p1b);
-  double c1y = getCartesianYFP(c1x, p1a);
+  float c1x = getCartesianXFP(p1a, p1b);
+  float c1y = getCartesianYFP(c1x, p1a);
   
-  double c2x = getCartesianXFP(p2a, p2b);
-  double c2y = getCartesianYFP(c2x, p2a);
+  float c2x = getCartesianXFP(p2a, p2b);
+  float c2y = getCartesianYFP(c2x, p2a);
 
-  double deltaX = c2x-c1x;    // distance each must move (signed)
-  double deltaY = c2y-c1y;
+  float deltaX = c2x-c1x;    // distance each must move (signed)
+  float deltaY = c2y-c1y;
 
   int linesegs = 1;            // assume at least 1 line segment will get us there.
   if (abs(deltaX) > abs(deltaY))
@@ -1053,10 +1123,11 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
     c1y = c1y + deltaY;
 
     // convert back to machine space
-    double pA = getMachineA(c1x, c1y);
-    double pB = getMachineB(c1x, c1y);
+    float pA = getMachineA(c1x, c1y);
+    float pB = getMachineB(c1x, c1y);
   
     // do the move
+    acceleration = false;
     changeLength(pA, pB);
 
     // one line less to do!
@@ -1064,17 +1135,19 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
   }
   
   // do the end point in case theres been some rounding errors etc
+  reportingPosition = true;
   changeLength(p2a, p2b);
+  acceleration = true;
 }
 
-double getMachineA(double cX, double cY)
+float getMachineA(float cX, float cY)
 {
-  double a = sqrt(sq(cX)+sq(cY));
+  float a = sqrt(sq(cX)+sq(cY));
   return a;
 }
-double getMachineB(double cX, double cY)
+float getMachineB(float cX, float cY)
 {
-  double b = sqrt(sq((pageWidth)-cX)+sq(cY));
+  float b = sqrt(sq((pageWidth)-cX)+sq(cY));
   return b;
 }
 
@@ -1528,21 +1601,24 @@ void moveB(int dist)
 
 void reportPosition()
 {
-  Serial.print(OUT_CMD_SYNC);
-  Serial.print(accelA.currentPosition());
-  Serial.print(COMMA);
-  Serial.print(accelB.currentPosition());
-  Serial.println(CMD_END);
-  
-//  int cX = getCartesianX();
-//  int cY = getCartesianY(cX, accelA.currentPosition());
-//  Serial.print(OUT_CMD_CARTESIAN);
-//  Serial.print(cX*mmPerStep);
-//  Serial.print(COMMA);
-//  Serial.print(cY*mmPerStep);
-//  Serial.println(CMD_END);
-//
-  outputAvailableMemory();
+  if (reportingPosition)
+  {
+    Serial.print(OUT_CMD_SYNC);
+    Serial.print(accelA.currentPosition());
+    Serial.print(COMMA);
+    Serial.print(accelB.currentPosition());
+    Serial.println(CMD_END);
+    
+  //  int cX = getCartesianX();
+  //  int cY = getCartesianY(cX, accelA.currentPosition());
+  //  Serial.print(OUT_CMD_CARTESIAN);
+  //  Serial.print(cX*mmPerStep);
+  //  Serial.print(COMMA);
+  //  Serial.print(cY*mmPerStep);
+  //  Serial.println(CMD_END);
+  //
+    outputAvailableMemory();
+  }
 }
 
 
@@ -1574,14 +1650,14 @@ void releaseMotors()
   motorb.release();
 }
 
-double getCartesianXFP(double aPos, double bPos)
+float getCartesianXFP(float aPos, float bPos)
 {
-  double calcX = (pow(pageWidth, 2) - pow(bPos, 2) + pow(aPos, 2)) / (pageWidth*2);
+  float calcX = (pow(pageWidth, 2) - pow(bPos, 2) + pow(aPos, 2)) / (pageWidth*2);
   return calcX;  
 }
-double getCartesianYFP(double cX, double aPos) 
+float getCartesianYFP(float cX, float aPos) 
 {
-  double calcY = sqrt(pow(aPos,2)-pow(cX,2));
+  float calcY = sqrt(pow(aPos,2)-pow(cX,2));
   return calcY;
 }
 
