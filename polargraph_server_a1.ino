@@ -35,6 +35,8 @@ const String DEFAULT_MACHINE_NAME = "PG01    ";
 float currentMaxSpeed = 800.0;
 float currentAcceleration = 400.0;
 
+float SUPERFAST_ACCELERATION = 6000;
+
 AF_Stepper motora(motorStepsPerRev, 1);
 AF_Stepper motorb(motorStepsPerRev, 2);
 
@@ -44,6 +46,8 @@ float mmPerStep = mmPerRev / motorStepsPerRev;
 float stepsPerMM = motorStepsPerRev / mmPerRev;
 
 int pageWidth = machineWidth * stepsPerMM;
+int pageHeight = machineHeight * stepsPerMM;
+int maxLength = 0;
 
 static String rowAxis = "A";
 const int INLENGTH = 50;
@@ -169,15 +173,13 @@ void setup()
   Serial.print(F("POLARGRAPH ON!"));
   Serial.println();
 
-  pinMode(53, OUTPUT); // necessary for SD card reading to work
-
   loadMachineSpecFromEeprom();
 
   accelA.setMaxSpeed(currentMaxSpeed);
   accelA.setAcceleration(currentAcceleration);  
   accelB.setMaxSpeed(currentMaxSpeed);
   accelB.setAcceleration(currentAcceleration);
-
+  
   float startLength = ((float) startLengthMM / (float) mmPerRev) * (float) motorStepsPerRev;
   accelA.setCurrentPosition(startLength);
   accelB.setCurrentPosition(startLength);
@@ -242,6 +244,11 @@ void loadMachineSpecFromEeprom()
   Serial.print(pageWidth);
   Serial.print(F(")"));
   Serial.println();
+  pageHeight = machineHeight * stepsPerMM;
+  Serial.print(F("Recalculated pageHeight in steps ("));
+  Serial.print(pageHeight);
+  Serial.print(F(")"));
+  Serial.println();
 
 
   String name = "";
@@ -253,7 +260,7 @@ void loadMachineSpecFromEeprom()
   
   if (name[0] == 0)
     name = DEFAULT_MACHINE_NAME;
-  
+  maxLength = 0;
   machineName = name;
   Serial.print(F("Loaded machine name:"));
   Serial.println(machineName);
@@ -828,12 +835,12 @@ void changeDrawingDirection()
       iterations++;
       penWidth = pw;
       int maxDens = maxDensity(penWidth, rowWidth);
-      Serial.print(F("Penwidth test "));
-      Serial.print(iterations);
-      Serial.print(F(", pen width: "));
-      Serial.print(penWidth);
-      Serial.print(F(", max density: "));
-      Serial.println(maxDens);
+//      Serial.print(F("Penwidth test "));
+//      Serial.print(iterations);
+//      Serial.print(F(", pen width: "));
+//      Serial.print(penWidth);
+//      Serial.print(F(", max density: "));
+//      Serial.println(maxDens);
       drawSquarePixel(rowWidth, rowWidth, maxDens, DIR_SE);
     }
 
@@ -876,12 +883,12 @@ void changeDrawingDirection()
       
       penWidth = pw;
       int maxDens = maxDensity(penWidth, rowWidth);
-      Serial.print(F("Penwidth test "));
-      Serial.print(iterations);
-      Serial.print(F(", pen width: "));
-      Serial.print(penWidth);
-      Serial.print(F(", max density: "));
-      Serial.println(maxDens);
+//      Serial.print(F("Penwidth test "));
+//      Serial.print(iterations);
+//      Serial.print(F(", pen width: "));
+//      Serial.print(penWidth);
+//      Serial.print(F(", max density: "));
+//      Serial.println(maxDens);
       
       for (int density = maxDens; density >= 0; density--)
       {
@@ -1003,6 +1010,12 @@ void changeLength()
   int lenA = asInt(inParam1);
   int lenB = asInt(inParam2);
   
+  if (lenA == 0)
+    lenA = 10;
+  if (lenB == 0)
+    lenB = 10;
+    
+  
   changeLength(lenA, lenB);
 }  
 
@@ -1053,17 +1066,34 @@ void changeLengthRelative(int tA, int tB)
   reportPosition();
 }
 
+int getMaxLength()
+{
+  if (maxLength == 0)
+  {
+    float length = getMachineA(machineWidth * stepsPerMM, machineHeight * stepsPerMM);
+    maxLength = int(length+0.5);
+  }
+  return maxLength;
+}
+
 void changeLengthDirect()
 {
   float endA = asFloat(inParam1);
   float endB = asFloat(inParam2);
-  int maxLength = asInt(inParam3);
+  int maxSegmentLength = asInt(inParam3);
 
   float startA = accelA.currentPosition();
   float startB = accelB.currentPosition();
 //  Serial.println(F("Drawing direct line"));
-  
-  drawBetweenPoints(startA, startB, endA, endB, maxLength);
+
+  if (endA < 20 || endB < 20 || endA > getMaxLength() | endB > getMaxLength())
+  {
+    Serial.println("This point falls outside the area of this machine. Skipping it.");
+  }
+  else
+  {
+    drawBetweenPoints(startA, startB, endA, endB, maxSegmentLength);
+  }
 }  
 
 /**
@@ -1075,7 +1105,7 @@ the native coordinates system.
 The fidelity of the line is controlled by maxLength - this is the longest size a line segment is 
 allowed to be.  1 is finest, slowest.  Use higher values for faster, wobblier.
 */
-void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength)
+void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxSegmentLength)
 {
   // ok, we're going to plot some dots between p1 and p2.  Using maths. I know! Brave new world etc.
   
@@ -1089,55 +1119,78 @@ void drawBetweenPoints(float p1a, float p1b, float p2a, float p2b, int maxLength
   
   float c2x = getCartesianXFP(p2a, p2b);
   float c2y = getCartesianYFP(c2x, p2a);
-
-  float deltaX = c2x-c1x;    // distance each must move (signed)
-  float deltaY = c2y-c1y;
-
-  int linesegs = 1;            // assume at least 1 line segment will get us there.
-  if (abs(deltaX) > abs(deltaY))
+  
+  // test to see if it's on the page
+  if (c2x > 20 && c2x<pageWidth-20 && c2y > 20 && c2y <pageHeight-20)
   {
-    // slope <=1 case    
-    while ((abs(deltaX)/linesegs) > maxLength)
+    float deltaX = c2x-c1x;    // distance each must move (signed)
+    float deltaY = c2y-c1y;
+  
+    int linesegs = 1;            // assume at least 1 line segment will get us there.
+    if (abs(deltaX) > abs(deltaY))
     {
-      linesegs++;
+      // slope <=1 case    
+      while ((abs(deltaX)/linesegs) > maxSegmentLength)
+      {
+        linesegs++;
+      }
     }
+    else
+    {
+      // slope >1 case
+      while ((abs(deltaY)/linesegs) > maxSegmentLength)
+      {
+        linesegs++;
+      }
+    }
+    
+    // reduce delta to one line segments' worth.
+    deltaX = deltaX/linesegs;
+    deltaY = deltaY/linesegs;
+  
+    // render the line in N shorter segments
+    while (linesegs > 0)
+    {
+      // compute next new location
+      c1x = c1x + deltaX;
+      c1y = c1y + deltaY;
+  
+      // convert back to machine space
+      float pA = getMachineA(c1x, c1y);
+      float pB = getMachineB(c1x, c1y);
+    
+      // do the move
+      useAcceleration(false);
+      changeLength(pA, pB);
+  
+      // one line less to do!
+      linesegs--;
+    }
+    
+    // do the end point in case theres been some rounding errors etc
+    reportingPosition = true;
+    changeLength(p2a, p2b);
+    useAcceleration(true);
   }
   else
   {
-    // slope >1 case
-    while ((abs(deltaY)/linesegs) > maxLength)
-    {
-      linesegs++;
-    }
+    Serial.println("Line is not on the page. Skipping it.");
   }
-  
-  // reduce delta to one line segments' worth.
-  deltaX = deltaX/linesegs;
-  deltaY = deltaY/linesegs;
+  outputAvailableMemory();
+}
 
-  // render the line in N shorter segments
-  while (linesegs > 0)
+void useAcceleration(boolean use)
+{
+  if (use)
   {
-    // compute next new location
-    c1x = c1x + deltaX;
-    c1y = c1y + deltaY;
-
-    // convert back to machine space
-    float pA = getMachineA(c1x, c1y);
-    float pB = getMachineB(c1x, c1y);
-  
-    // do the move
-    acceleration = false;
-    changeLength(pA, pB);
-
-    // one line less to do!
-    linesegs--;
+    accelA.setAcceleration(currentAcceleration);
+    accelB.setAcceleration(currentAcceleration);
   }
-  
-  // do the end point in case theres been some rounding errors etc
-  reportingPosition = true;
-  changeLength(p2a, p2b);
-  acceleration = true;
+  else
+  {
+    accelA.setAcceleration(SUPERFAST_ACCELERATION);
+    accelB.setAcceleration(SUPERFAST_ACCELERATION);
+  }
 }
 
 float getMachineA(float cX, float cY)
@@ -1260,11 +1313,11 @@ byte getAutoDrawDirection(long targetA, long targetB, long sourceA, long sourceB
   byte dir = DIR_SE;
   
   // some bitchin triangles, I goshed-well love triangles.
-  long diffA = sourceA - targetA;
-  long diffB = sourceB - targetB;
-  long hyp = sqrt(sq(diffA)+sq(diffB));
-  
-  float bearing = atan(hyp/diffA);
+//  long diffA = sourceA - targetA;
+//  long diffB = sourceB - targetB;
+//  long hyp = sqrt(sq(diffA)+sq(diffB));
+//  
+//  float bearing = atan(hyp/diffA);
   
 //  Serial.print("bearing:");
 //  Serial.println(bearing);
