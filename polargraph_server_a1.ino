@@ -5,11 +5,11 @@
 #include <EEPROM.h>
 
 //  EEPROM addresses
-const int EEPROM_MACHINE_WIDTH = 0;
-const int EEPROM_MACHINE_HEIGHT = 2;
-const int EEPROM_MACHINE_NAME = 4;
-const int EEPROM_MACHINE_MM_PER_REV = 14;
-const int EEPROM_MACHINE_STEPS_PER_REV = 16;
+const byte EEPROM_MACHINE_WIDTH = 0;
+const byte EEPROM_MACHINE_HEIGHT = 2;
+const byte EEPROM_MACHINE_NAME = 4;
+const byte EEPROM_MACHINE_MM_PER_REV = 14;
+const byte EEPROM_MACHINE_STEPS_PER_REV = 16;
 
 // Pen raising servo
 Servo penHeight;
@@ -45,9 +45,9 @@ int startLengthMM = 800;
 float mmPerStep = mmPerRev / motorStepsPerRev;
 float stepsPerMM = motorStepsPerRev / mmPerRev;
 
-int pageWidth = machineWidth * stepsPerMM;
-int pageHeight = machineHeight * stepsPerMM;
-int maxLength = 0;
+long pageWidth = machineWidth * stepsPerMM;
+long pageHeight = machineHeight * stepsPerMM;
+long maxLength = 0;
 
 static String rowAxis = "A";
 const int INLENGTH = 50;
@@ -300,7 +300,7 @@ void movePenDown()
   for (int i=UP_POSITION; i>DOWN_POSITION; i--) {
 //    Serial.println(i);
     penHeight.write(i);
-    delay(10);
+    delay(5);
   }
   penHeight.detach();
   isPenUp = false;
@@ -870,11 +870,11 @@ void changeDrawingDirection()
     float oldPenWidth = penWidth;
     int iterations = 0;
     
-    int posA = accelA.currentPosition();
-    int posB = accelB.currentPosition();
+    long posA = accelA.currentPosition();
+    long posB = accelB.currentPosition();
 
-    int startColumn = posA;
-    int startRow = posB;
+    long startColumn = posA;
+    long startRow = posB;
     
     for (float pw = startWidth; pw <= endWidth; pw+=incSize)
     {
@@ -917,10 +917,10 @@ void changeDrawingDirection()
 
   void drawRectangle()
   {
-    int v1A = asInt(inParam1);
-    int v1B = asInt(inParam2);
-    int v2A = asInt(inParam3);
-    int v2B = asInt(inParam4);
+    long v1A = asLong(inParam1);
+    long v1B = asLong(inParam2);
+    long v2A = asLong(inParam3);
+    long v2B = asLong(inParam4);
     
     changeLength(v1A, v1B);
     accelA.moveTo(v2A);
@@ -1007,8 +1007,8 @@ void changeDrawingDirection()
 
 void changeLength()
 {
-  int lenA = asInt(inParam1);
-  int lenB = asInt(inParam2);
+  long lenA = asLong(inParam1);
+  long lenB = asLong(inParam2);
   
   if (lenA == 0)
     lenA = 10;
@@ -1019,7 +1019,7 @@ void changeLength()
   changeLength(lenA, lenB);
 }  
 
-void changeLength(int tA, int tB)
+void changeLength(long tA, long tB)
 {
   accelA.moveTo(tA);
   accelB.moveTo(tB);
@@ -1052,7 +1052,7 @@ void changeLength(float tA, float tB)
   reportPosition();
 }
 
-void changeLengthRelative(int tA, int tB)
+void changeLengthRelative(long tA, long tB)
 {
   accelA.move(tA);
   accelB.move(tB);
@@ -1066,12 +1066,12 @@ void changeLengthRelative(int tA, int tB)
   reportPosition();
 }
 
-int getMaxLength()
+long getMaxLength()
 {
   if (maxLength == 0)
   {
     float length = getMachineA(machineWidth * stepsPerMM, machineHeight * stepsPerMM);
-    maxLength = int(length+0.5);
+    maxLength = long(length+0.5);
   }
   return maxLength;
 }
@@ -1226,17 +1226,17 @@ void drawTestDirectionSquare()
 
 void drawSquarePixel() 
 {
-    int originA = asInt(inParam1);
-    int originB = asInt(inParam2);
+    long originA = asLong(inParam1);
+    long originB = asLong(inParam2);
     int size = asInt(inParam3);
     int density = asInt(inParam4);
 
     int halfSize = size / 2;
     
-    int startPointA;
-    int startPointB;
-    int endPointA;
-    int endPointB;
+    long startPointA;
+    long startPointB;
+    long endPointA;
+    long endPointB;
 
     int calcFullSize = halfSize * 2; // see if there's any rounding errors
     int offsetStart = size - calcFullSize;
@@ -1382,8 +1382,8 @@ byte getAutoDrawDirection(long targetA, long targetB, long sourceA, long sourceB
 }
 
 void drawScribblePixel() {
-    int originA = asInt(inParam1);
-    int originB = asInt(inParam2);
+    long originA = asLong(inParam1);
+    long originB = asLong(inParam2);
     int size = asInt(inParam3);
     int density = asInt(inParam4);
     
@@ -1395,15 +1395,15 @@ void drawScribblePixel() {
     outputAvailableMemory(); 
 }
 
-void drawScribblePixel(int originA, int originB, int size, int density) {
+void drawScribblePixel(long originA, long originB, int size, int density) {
 
 //  int originA = accelA.currentPosition();
 //  int originB = accelB.currentPosition();
   
-  int lowLimitA = originA-(size/2);
-  int highLimitA = lowLimitA+size;
-  int lowLimitB = originB-(size/2);
-  int highLimitB = lowLimitB+size;
+  long lowLimitA = originA-(size/2);
+  long highLimitA = lowLimitA+size;
+  long lowLimitB = originB-(size/2);
+  long highLimitB = lowLimitB+size;
   int randA;
   int randB;
   
@@ -1638,14 +1638,14 @@ void flipWaveDirection()
   else
     lastWaveWasTop = true;
 }
-void moveA(int dist)
+void moveA(long dist)
 {
   accelA.move(dist);
   while (accelA.distanceToGo() != 0)
     accelA.run();
 }
 
-void moveB(int dist)
+void moveB(long dist)
 {
   accelB.move(dist);
   while (accelB.distanceToGo() != 0)
@@ -1677,8 +1677,8 @@ void reportPosition()
 
 void setPosition()
 {
-  int targetA = asInt(inParam1);
-  int targetB = asInt(inParam2);
+  long targetA = asLong(inParam1);
+  long targetB = asLong(inParam2);
 
   accelA.setCurrentPosition(targetA);
   accelB.setCurrentPosition(targetB);
@@ -1699,8 +1699,6 @@ void engageMotors()
 void releaseMotors()
 {
   penUp();
-  motora.release();
-  motorb.release();
 }
 
 float getCartesianXFP(float aPos, float bPos)
@@ -1715,30 +1713,29 @@ float getCartesianYFP(float cX, float aPos)
 }
 
 
-int getCartesianX(float aPos, float bPos)
+long getCartesianX(float aPos, float bPos)
 {
-  int calcX = int((pow(pageWidth, 2) - pow(bPos, 2) + pow(aPos, 2)) / (pageWidth*2));
+  long calcX = long((pow(pageWidth, 2) - pow(bPos, 2) + pow(aPos, 2)) / (pageWidth*2));
   return calcX;  
 }
 
-int getCartesianX() {
-  int calcX = getCartesianX(accelA.currentPosition(), accelB.currentPosition());
+long getCartesianX() {
+  long calcX = getCartesianX(accelA.currentPosition(), accelB.currentPosition());
   return calcX;  
 }
 
-int getCartesianY() {
+long getCartesianY() {
   return getCartesianY(getCartesianX(), accelA.currentPosition());
 }
-int getCartesianY(int cX, float aPos) {
-  int calcX = cX;
-  int calcY = int(sqrt(pow(aPos,2)-pow(calcX,2)));
+long getCartesianY(long cX, float aPos) {
+  long calcY = long(sqrt(pow(aPos,2)-pow(cX,2)));
   return calcY;
 }
 
 
 void outputAvailableMemory()
 {
-  int avMem = availableMemory();
+  long avMem = availableMemory();
   if (avMem != availMem)
   {
     availMem = avMem;
