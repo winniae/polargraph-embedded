@@ -676,7 +676,7 @@ void setMachineNameFromCommand()
 
 void setMachineMmPerRevFromCommand()
 {
-  int mmPerRev = asInt(inParam1);
+  float mmPerRev = asFloat(inParam1);
   EEPROMWriteInt(EEPROM_MACHINE_MM_PER_REV, mmPerRev);
   loadMachineSpecFromEeprom();
 }
