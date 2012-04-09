@@ -1,8 +1,27 @@
-//#include <AFMotorSPI.h>
+/**
+*  Polargraph Server for ATMEGA328-based arduino boards.
+*  Written by Sandy Noble
+*  Released under GNU License version 3.
+*  http://www.polargraph.co.uk
+*  http://code.google.com/p/polargraph/
+
+2012-04-09 Added checksum as method of verifying serial comms.
+*/
+
 #include <AFMotor.h>
 #include <AccelStepper.h>
 #include <Servo.h>
 #include <EEPROM.h>
+
+// for working out CRCs
+static PROGMEM prog_uint32_t crc_table[16] = {
+    0x00000000, 0x1db71064, 0x3b6e20c8, 0x26d930ac,
+    0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
+    0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c,
+    0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
+};
+
+boolean usingCrc = false;
 
 //  EEPROM addresses
 const byte EEPROM_MACHINE_WIDTH = 0;
@@ -347,16 +366,16 @@ void loop()
   // send ready
   // wait for instruction
   int idleTime = millis();
+  
+  // do this bit until we get a command confirmed
   while (!lastCommandConfirmed)
   {
-//    rove();
     // idle
     String inS = "";
 
     // get incoming command
     while (inS.length() == 0)
     {
-//      rove();
       int timeSince = millis() - idleTime;
       if (timeSince > 5000)
       {
@@ -365,31 +384,51 @@ void loop()
       }
       inS = readCommand();
     }
-
-    if (inS.equals(CMD_EXEC)) // this is confirming the previous command
+    
+    // if it's using the CRC check, then confirmation is easy
+    if (usingCrc)
     {
-      // this shit is on
-      lastCommandConfirmed = true;
-      Serial.print(F("Command confirmed: "));
-      Serial.println(lastCommand);
-      idleTime = millis();
+      if (!lastCommandConfirmed)
+      {
+        requestResend();
+      }
+      else
+      {
+        lastCommand = inS;
+      }
     }
-    else if (inS.startsWith("CANCEL")) // this is cancelling the previous command
+    else
     {
-      lastCommand = "";
-      lastCommandConfirmed = false;
-      ready();
-      idleTime = millis();
-    }
-    else // new command
-    {
-      lastCommand = inS;
-      lastCommandConfirmed = false;
-      acknowledge(lastCommand);
-      idleTime = millis();
+      // not using CRCs.
+      if (inS.equals(CMD_EXEC)) // this is confirming the previous command
+      {
+        // this just got real
+        lastCommandConfirmed = true;
+        Serial.print(F("Command confirmed: "));
+        Serial.println(lastCommand);
+        idleTime = millis();
+      }
+      else if (inS.startsWith("CANCEL")) // this is cancelling the previous command
+      {
+        lastCommand = "";
+        lastCommandConfirmed = false;
+        ready();
+        idleTime = millis();
+      }
+      else // new command
+      {
+        lastCommand = inS;
+        if (!lastCommandConfirmed)
+        {
+          lastCommandConfirmed = false;
+          acknowledge(lastCommand);
+        }
+        idleTime = millis();
+      }
     }
   }
 
+  // have just exited the loop that gets a confirmed command - so this is to act on
   boolean commandParsed = parseCommand(lastCommand);
   if (commandParsed)
   {
@@ -539,8 +578,7 @@ void executeCommand(String inS)
 
 boolean parseCommand(String inS)
 {
-  String endChars = inS.substring(inS.length() - 4);
-  if (endChars.equals(CMD_END))
+  if (inS.endsWith(CMD_END))
   {
     extractParams(inS);
     return true;
@@ -568,6 +606,37 @@ String readCommand()
   }
   inString[inCount] = 0;                     // null terminate the string
   String inS = inString;
+
+  // check the CRC for this command
+  // and set commandConfirmed true or false
+  int colonPos = inS.lastIndexOf(":");
+  if (colonPos != -1)
+  {
+    usingCrc = true;
+    String cs = inS.substring(colonPos+1);
+    long checksum = asLong(cs);
+    inS = inS.substring(0, colonPos);
+    
+    long calcCrc = crc_string(inS);
+    
+    if (calcCrc == checksum)
+    {
+      lastCommandConfirmed = true;
+    }
+    else
+    {
+      Serial.print(F("Checksum not matched!:"));
+      Serial.println(calcCrc);
+      lastCommandConfirmed = false;
+    }
+  }
+  else
+  {
+    // then fall back and do the ACK - no action here
+    usingCrc = false;
+    lastCommandConfirmed = false;
+  }
+
   return inS;
 }
 
@@ -956,13 +1025,13 @@ void changeDrawingDirection()
 //}
 //                                                     
 //
-//void drawCircle(int centerx, int centery, int radius) {
+//void drawCircle(long centerx, long centery, int radius) {
 //  // Estimate a circle using 20 arc Bezier curve segments
 //  int segments =20;
 //  int angle1 = 0;
 //  int midpoint=0;
 //   
-//   changeLength(centerx+radius, centery);
+////   changeLength(centerx+radius, centery);
 //
 //  for (float angle2=360/segments; angle2<=360; angle2+=360/segments) {
 //
@@ -973,10 +1042,10 @@ void changeDrawingDirection()
 //    float endx=centerx+radius*cos(rads(angle2));
 //    float endy=centery+radius*sin(rads(angle2));
 //    
-//    int t1 = rads(angle1)*1000 ;
-//    int t2 = rads(angle2)*1000;
-//    int t3 = angle1;
-//    int t4 = angle2;
+//    long t1 = rads(angle1)*1000 ;
+//    long t2 = rads(angle2)*1000;
+//    long t3 = angle1;
+//    long t4 = angle2;
 //
 //    drawCurve(startx,starty,endx,endy,
 //              centerx+2*(radius*cos(rads(midpoint))-.25*(radius*cos(rads(angle1)))-.25*(radius*cos(rads(angle2)))),
@@ -1777,4 +1846,27 @@ unsigned int EEPROMReadInt(int p_address)
   return ((lowByte << 0) & 0xFF) + ((highByte << 8) & 0xFF00);
 }
 
+/*
+http://www.excamera.com/sphinx/article-crc.html
+*/
+unsigned long crc_update(unsigned long crc, byte data)
+{
+    byte tbl_idx;
+    tbl_idx = crc ^ (data >> (0 * 4));
+    crc = pgm_read_dword_near(crc_table + (tbl_idx & 0x0f)) ^ (crc >> 4);
+    tbl_idx = crc ^ (data >> (1 * 4));
+    crc = pgm_read_dword_near(crc_table + (tbl_idx & 0x0f)) ^ (crc >> 4);
+    return crc;
+}
+
+unsigned long crc_string(String s)
+{
+  unsigned long crc = ~0L;
+  for (int i = 0; i < s.length(); i++)
+  {
+    crc = crc_update(crc, s.charAt(i));
+  }
+  crc = ~crc;
+  return crc;
+}
 
